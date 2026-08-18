@@ -1,0 +1,1423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Merge">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f1117">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="icon" type="image/png" href="/static/icon-192.png">
+<title>Merge</title>
+<style>
+  :root {
+    --bg:#0f1117; --panel:#171a23; --line:#262b38; --ink:#e6e9f0;
+    --dim:#8a92a6; --accent:#6fd3ff; --good:#67e39b; --bad:#ff6b6b;
+    --gold:#ffd86b; --user:#1e3a4d; --col:760px;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; margin:0; overscroll-behavior-y:contain; }
+  body {
+    background:var(--bg); color:var(--ink);
+    font:15.5px/1.55 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    display:flex; flex-direction:column;
+  }
+
+  header {
+    display:flex; align-items:center; gap:10px; padding:10px 14px;
+    padding-top:calc(10px + env(safe-area-inset-top));
+    border-bottom:1px solid var(--line); background:var(--panel);
+    position:sticky; top:0; z-index:10;
+    flex-wrap:wrap; row-gap:7px;      /* never run off-screen — wrap instead */
+  }
+  .brand { font-weight:700; letter-spacing:.14em; font-size:14px; }
+  .brand span { color:var(--accent); }
+  .meta { color:var(--dim); font-size:11.5px; margin-left:auto; text-align:right; line-height:1.3; }
+  /* phones: tighten everything and drop the space-hungry model/workspace text */
+  @media (max-width: 560px) {
+    header { gap:6px; padding:8px 10px; padding-top:calc(8px + env(safe-area-inset-top)); }
+    .brand { font-size:12px; letter-spacing:.08em; }
+    header button { padding:6px 9px; font-size:13px; }
+    #mode, #privacy { padding:6px 6px; font-size:12px; max-width:34vw; }
+    .meta { font-size:10px; }
+    .meta > div:first-child { display:none; }   /* drop the model line; keep the tappable folder */
+    #mWs { max-width:30vw; }
+  }
+  .meta b { color:var(--ink); font-weight:600; }
+  header button {
+    background:#222736; border:1px solid var(--line); color:var(--ink);
+    border-radius:8px; padding:7px 11px; font-size:13px; font-family:inherit;
+  }
+  #mode, #privacy {
+    background:#222736; border:1px solid var(--line); color:var(--ink);
+    border-radius:8px; padding:6px 8px; font-size:13px; font-family:inherit;
+  }
+
+  /* center a readable column on desktop; full-width with small gutters on phones */
+  #log { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;
+         padding:18px max(14px, calc((100% - var(--col)) / 2)); }
+  .msg { margin-bottom:14px; max-width:92%; }
+  .msg.me { margin-left:auto; background:var(--user); border-radius:14px 14px 4px 14px;
+            padding:10px 13px; }
+  .msg.me.queued { opacity:.5; }   /* typed while she's busy — waiting its turn */
+  .msg.bot { white-space:pre-wrap; }
+  .msg.bot code { background:#0d0f16; padding:2px 5px; border-radius:4px; font-size:13px; }
+  .msg.bot pre { background:#0d0f16; padding:10px; border-radius:8px; overflow-x:auto;
+                 font-size:12.5px; border:1px solid var(--line); }
+
+  .step { color:var(--dim); font-size:12.5px; padding:3px 0 3px 12px;
+          border-left:2px solid var(--line); margin:5px 0; }
+  .step b { color:var(--accent); font-weight:500; }
+  .out { color:var(--dim); font-size:12px; font-family:ui-monospace, monospace;
+         white-space:pre-wrap; word-break:break-word; padding-left:14px;
+         max-height:8em; overflow:hidden; }
+  .err { color:var(--bad); font-size:13.5px; }
+  .note { color:var(--gold); font-size:13px; font-style:italic; }
+  .recbtn { background:#c0392b !important; color:#fff !important; }
+  .spk-on { background:var(--accent) !important; color:#06131a !important; }
+  #privacyBanner { padding:7px 14px; font-size:12.5px; text-align:center;
+    border-bottom:1px solid var(--line); letter-spacing:.2px; }
+
+  /* her window: images she draws or looks at, shown inline */
+  .imgcard { margin:8px 0; max-width:min(420px, 92%); }
+  .imgcard img {
+    width:100%; border-radius:12px; border:1px solid var(--line);
+    display:block; cursor:zoom-in; background:#0d0f16;
+  }
+  .imgcard .cap { color:var(--dim); font-size:11px; margin-top:5px;
+                  font-family:ui-monospace, monospace; }
+
+  /* status dot in the header — she's reachable / not */
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%;
+         background:var(--dim); margin-right:6px; vertical-align:middle;
+         transition:background .3s; }
+  .dot.on { background:var(--good); box-shadow:0 0 6px rgba(103,227,155,.6); }
+  .dot.warn { background:#e0b050; box-shadow:0 0 6px rgba(224,176,80,.6); }
+  .dot.off { background:var(--bad); box-shadow:0 0 6px rgba(255,107,107,.55); }
+  .meta > div:first-child { cursor:pointer; }
+  /* copy button on code blocks she writes */
+  .msg pre { position:relative; }
+  .copybtn { position:absolute; top:6px; right:6px; background:#2a2f3d; color:var(--dim);
+    border:1px solid var(--line); border-radius:6px; font-size:11px; padding:2px 8px;
+    cursor:pointer; opacity:.72; font-family:inherit; }
+  .copybtn:hover { opacity:1; color:var(--ink); }
+
+  /* the welcome / empty state */
+  .welcome { text-align:center; color:var(--dim); padding:13vh 20px 0;
+             animation:fade .4s ease; }
+  @keyframes fade { from{opacity:0; transform:translateY(6px)} to{opacity:1} }
+  .welcome .hi { font-size:27px; font-weight:700; letter-spacing:.04em;
+                 color:var(--ink); margin-bottom:8px; }
+  .welcome .hi span { color:var(--accent); }
+  .welcome .sub { font-size:14.5px; line-height:1.5; margin-bottom:24px;
+                  max-width:440px; margin-left:auto; margin-right:auto; }
+  .welcome .chips { display:flex; flex-wrap:wrap; gap:9px; justify-content:center;
+                    max-width:540px; margin:0 auto; }
+  .welcome .chip { background:var(--panel); border:1px solid var(--line);
+                   border-radius:20px; padding:10px 16px; font-size:13px;
+                   color:var(--ink); cursor:pointer; transition:border-color .2s; }
+  .welcome .chip:hover { border-color:var(--accent); }
+
+  /* conversations sidebar (slides in from the left) */
+  .sb-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:60; }
+  .sidebar {
+    position:fixed; top:0; left:0; bottom:0; width:min(320px, 85vw);
+    background:var(--panel); border-right:1px solid var(--line); z-index:61;
+    display:flex; flex-direction:column; box-shadow:2px 0 30px rgba(0,0,0,.5);
+    padding-top:env(safe-area-inset-top); animation:slideIn .18s ease;
+  }
+  @keyframes slideIn { from{transform:translateX(-100%)} to{transform:translateX(0)} }
+  .sidebar h3 { margin:0; padding:16px 16px 8px; font-size:12px; letter-spacing:.12em;
+                color:var(--dim); text-transform:uppercase; }
+  .sb-list { flex:1; overflow-y:auto; padding:4px 8px 12px; }
+  .sb-row { display:flex; align-items:center; gap:6px; padding:10px;
+            border-radius:9px; cursor:pointer; }
+  .sb-row:hover { background:rgba(255,255,255,.04); }
+  .sb-row.active { background:rgba(111,211,255,.12); }
+  .sb-row .info { flex:1; min-width:0; }
+  .sb-row .title { font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sb-row .meta { font-size:11px; opacity:.6; overflow:hidden;
+                  text-overflow:ellipsis; white-space:nowrap; }
+  .sb-del { flex-shrink:0; background:transparent; border:none; color:var(--dim);
+            font-size:15px; padding:6px 8px; border-radius:7px; cursor:pointer; line-height:1; }
+  .sb-del:hover { background:rgba(255,107,107,.15); color:var(--bad); }
+  .sb-empty { padding:16px; color:var(--dim); font-size:13px; }
+
+  /* folder picker modal */
+  .fmodal-bg { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:70;
+               display:flex; align-items:center; justify-content:center; padding:20px; }
+  .fmodal { background:var(--panel); border:1px solid var(--line); border-radius:14px;
+            width:min(460px,100%); max-height:76vh; display:flex; flex-direction:column;
+            box-shadow:0 12px 40px rgba(0,0,0,.5); }
+  .fmodal h3 { margin:0; padding:15px 16px 4px; font-size:16px; }
+  .fmodal .cur { padding:0 16px 10px; color:var(--accent); font-size:12px;
+                 font-family:ui-monospace,monospace; word-break:break-all; }
+  .fmodal .flist { flex:1; overflow-y:auto; padding:4px 8px; min-height:120px; }
+  .frow { display:flex; align-items:center; gap:9px; padding:11px 10px; border-radius:8px;
+          cursor:pointer; font-size:14px; }
+  .frow:hover { background:rgba(255,255,255,.05); }
+  .frow .ic { opacity:.7; width:18px; text-align:center; }
+  .fmodal .foot { display:flex; gap:8px; padding:12px 16px; border-top:1px solid var(--line); }
+  .fmodal .foot button { flex:1; padding:12px; border-radius:10px; border:none;
+                         font-size:15px; font-weight:600; font-family:inherit; cursor:pointer; }
+  .fmodal .use { background:var(--accent); color:#06131a; }
+  .fmodal .cancel { background:#2a2f3d; color:var(--ink); }
+  #mWs { cursor:pointer; }
+  #mWs:hover { color:var(--accent); }
+
+  /* the permission card — big targets, impossible to tap by accident */
+  .perm {
+    background:#2a2418; border:1px solid var(--gold); border-radius:12px;
+    padding:14px; margin:12px 0;
+  }
+  .perm .what { font-weight:600; margin-bottom:4px; }
+  .perm .detail {
+    font-family:ui-monospace, monospace; font-size:12.5px; color:var(--dim);
+    background:#0d0f16; padding:9px; border-radius:7px; margin:8px 0;
+    white-space:pre-wrap; word-break:break-all; max-height:9em; overflow:auto;
+  }
+  .perm .row { display:flex; gap:10px; margin-top:10px; }
+  .perm button { flex:1; padding:14px; border-radius:10px; border:none;
+                 font-size:16px; font-weight:600; font-family:inherit; }
+  .perm .yes { background:var(--good); color:#07130c; }
+  .perm .no  { background:#3a2020; color:var(--bad); border:1px solid var(--bad); }
+  .perm.done { opacity:.5; }
+  .perm.done .row { display:none; }
+
+  footer {
+    border-top:1px solid var(--line); background:var(--panel);
+    padding:10px max(10px, calc((100% - var(--col)) / 2));
+    padding-bottom:calc(10px + env(safe-area-inset-bottom));
+    display:flex; gap:8px; align-items:flex-end;
+  }
+  #box {
+    flex:1; background:#0d0f16; color:var(--ink); border:1px solid var(--line);
+    border-radius:12px; padding:12px; font-size:16px; font-family:inherit;
+    resize:none; max-height:34vh; min-height:46px; line-height:1.4;
+  }
+  #box:focus { outline:none; border-color:var(--accent); }
+  /* live waveform — takes the input's place while recording */
+  #wave {
+    flex:1; height:46px; min-height:46px; background:#0d0f16;
+    border:1px solid var(--accent); border-radius:12px; display:none;
+  }
+  #send {
+    background:var(--accent); color:#06131a; border:none; border-radius:12px;
+    width:52px; height:46px; font-size:20px; font-weight:700; flex-shrink:0;
+  }
+  #send:disabled { opacity:.4; }
+  /* mic + camera match the send button's size, secondary styling */
+  #mic, #cam {
+    width:52px; height:46px; flex-shrink:0; border-radius:12px; font-size:20px;
+    background:#222736; border:1px solid var(--line); color:var(--ink);
+    font-family:inherit; padding:0;
+  }
+
+  .working { color:var(--accent); font-size:13.5px; padding:8px 0;
+             display:flex; align-items:center; gap:2px; }
+  .think-pulse { display:inline-block; width:9px; height:9px; border-radius:50%;
+                 background:var(--accent); margin-right:9px; flex-shrink:0;
+                 animation:pulse 1.3s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:.35; transform:scale(.75)}
+                     50%{opacity:1; transform:scale(1.15)} }
+  .think-time { color:var(--dim); font-variant-numeric:tabular-nums; }
+
+  #setup { padding:20px; }
+  #setup input { width:100%; background:#0d0f16; color:var(--ink);
+    border:1px solid var(--line); border-radius:10px; padding:12px; font-size:16px;
+    margin:8px 0 14px; font-family:inherit; }
+  #setup button { width:100%; background:var(--accent); color:#06131a; border:none;
+    border-radius:10px; padding:14px; font-size:16px; font-weight:600; }
+  #setup label { font-size:13px; color:var(--dim); }
+  .hint { color:var(--dim); font-size:12.5px; margin-top:14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">MER<span>GE</span></div>
+  <button id="chatsBtn" title="Your conversations">☰</button>
+  <button id="newBtn">New</button>
+  <button id="cogBtn" title="Options and admin">⚙</button>
+  <select id="mode" title="Style: speed ⇄ creativity ⇄ accuracy">
+    <option value="auto">🎛️ Auto</option>
+    <option value="flash">⚡ Flash</option>
+    <option value="muse">🎨 Muse</option>
+    <option value="balanced">⚖️ Balanced</option>
+    <option value="precise">🎯 Precise</option>
+    <option value="deep">🧠 Deep</option>
+    <option value="teach">🎓 Teach</option>
+  </select>
+  <select id="privacy" title="Privacy: saved / off the record / knowledge only">
+    <option value="normal">🗒️ Normal</option>
+    <option value="offrec">🕶️ Off the record</option>
+    <option value="sandbox">🔒 Knowledge only</option>
+  </select>
+  <button id="arBtn" style="display:none" title="Augmented reality (headset)">AR</button>
+  <button id="speakBtn" title="Read her replies aloud">🔈</button>
+  <button id="voiceBtn" style="display:none" title="Hands-free voice chat">🎙️</button>
+  <button id="fsBtn" title="Full screen">⛶</button>
+  <div class="meta">
+    <div><span class="dot" id="statusDot"></span><span id="mModel">—</span></div>
+    <div id="mWs" style="max-width:44vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
+  </div>
+</header>
+
+<div id="privacyBanner" style="display:none"></div>
+<div id="log"></div>
+
+<footer>
+  <textarea id="box" rows="1" placeholder="Tell it what to do…" enterkeyhint="send"></textarea>
+  <canvas id="wave" title="Listening…"></canvas>
+  <button id="cam" style="display:none" title="Take a photo and send it to her">📷</button>
+  <input id="camInput" type="file" accept="image/*" capture="environment" style="display:none">
+  <button id="mic" style="display:none" title="Tap, speak, tap again">🎤</button>
+  <button id="send">↑</button>
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const log = $('log');
+let SESSION = localStorage.getItem('forge-session') || null;
+let TOKEN = new URLSearchParams(location.search).get('token')
+            || localStorage.getItem('forge-token') || '';
+if (new URLSearchParams(location.search).get('token')) {
+  localStorage.setItem('forge-token', TOKEN);
+  history.replaceState({}, '', location.pathname);   // keep it out of the URL bar
+}
+let WORKSPACE = localStorage.getItem('forge-workspace') || '';
+let es = null, working = false, cursor = 0;
+let arActive = false, vrActive = false;   // set by the WebXR handlers below
+
+// What device/mode she's being used from, sent with each message so she can
+// adapt. Recomputed per send so it reflects the current AR/VR state.
+function detectEnv() {
+  const ua = navigator.userAgent;
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  const small = Math.min(screen.width, screen.height);
+  if (arActive) return 'AR mode on ' + (coarse ? 'a phone (camera passthrough)' : 'a headset');
+  if (vrActive) return 'a VR headset';
+  if (/iPad|Tablet/i.test(ua) || (coarse && small >= 600)) return 'a tablet';
+  if (coarse || /Mobi|Android|iPhone/i.test(ua)) return 'a phone';
+  return 'a desktop PC';
+}
+
+// Operating style, remembered across visits and sent with each message.
+$('mode').value = localStorage.getItem('forge-mode') || 'auto';
+$('mode').onchange = () => localStorage.setItem('forge-mode', $('mode').value);
+
+// ---- privacy: a separate dial from the speed style ------------------
+// normal = saved & full access; offrec = read anything but change nothing on
+// disk, unrecorded; sandbox = knowledge + safe tools only, no files, unrecorded.
+let sessionEphemeral = false;   // is the CURRENT chat one that leaves no trace?
+function currentPrivacy() { return $('privacy').value || 'normal'; }
+const _PRIV_BANNER = {
+  offrec:  {bg:'#3a2d12', fg:'#f0c26b', text:"🕶️ Off the record — she can read but can't change anything, and nothing here is saved."},
+  sandbox: {bg:'#2b1836', fg:'#d9a8f5', text:"🔒 Knowledge only — no files at all, and nothing here is saved."},
+};
+function updatePrivacyUI() {
+  const b = $('privacyBanner'), p = currentPrivacy(), cfg = _PRIV_BANNER[p];
+  if (cfg) { b.textContent = cfg.text; b.style.background = cfg.bg; b.style.color = cfg.fg; b.style.display = ''; }
+  else b.style.display = 'none';
+  $('privacy').style.outline = cfg ? '2px solid ' + cfg.fg : '';
+}
+$('privacy').value = localStorage.getItem('forge-privacy') || 'normal';
+$('privacy').onchange = () => {
+  localStorage.setItem('forge-privacy', $('privacy').value);
+  newChat(false);          // a privacy switch starts a clean chat — never mix recorded and private
+  updatePrivacyUI();
+  const p = currentPrivacy();
+  if (p !== 'normal') el('note', (_PRIV_BANNER[p] || {}).text || '');
+};
+updatePrivacyUI();
+
+const q = p => p + (p.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN);
+const api = (p, opts) => fetch(q(p), opts).then(r => {
+  if (r.status === 401) { badToken(); throw new Error('unauthorized'); }
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+});
+
+function badToken() {
+  localStorage.removeItem('forge-token');
+  log.innerHTML = '<div class="err">Wrong or missing token. Open the link the server printed, '
+    + 'the one ending in <code>?token=…</code></div>';
+}
+
+// Only follow new content to the bottom if you were already there — if you've
+// scrolled up to read, nothing yanks you back down.
+function atBottom() {
+  return log.scrollHeight - log.scrollTop - log.clientHeight < 120;
+}
+function scrollDown() { log.scrollTop = log.scrollHeight; }
+function el(cls, html) {
+  const follow = atBottom();
+  const d = document.createElement('div');
+  d.className = cls;
+  if (html !== undefined) d.innerHTML = html;
+  log.appendChild(d);
+  if (follow) scrollDown();
+  return d;
+}
+
+// Put a small "copy" button on every code block she writes.
+function addCopyButtons(container) {
+  if (!container) return;
+  container.querySelectorAll('pre').forEach(pre => {
+    if (pre.querySelector('.copybtn')) return;
+    const btn = document.createElement('button');
+    btn.className = 'copybtn'; btn.textContent = 'copy';
+    btn.onclick = () => {
+      const code = (pre.querySelector('code') || pre).innerText;
+      (navigator.clipboard ? navigator.clipboard.writeText(code) : Promise.reject())
+        .then(() => { btn.textContent = 'copied'; setTimeout(() => btn.textContent = 'copy', 1200); })
+        .catch(() => { btn.textContent = 'select + copy'; });
+    };
+    pre.appendChild(btn);
+  });
+}
+const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+// tiny markdown: fenced code, inline code, bold. Enough for an agent's replies.
+function md(t) {
+  return esc(t)
+    .replace(/```(\w*)\n([\s\S]*?)```/g, (m, l, c) => '<pre>' + c + '</pre>')
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+}
+
+// Her window: pull image paths out of a text blob and show the real picture.
+// Tool results say "Image saved to /…/foo.png" / "Screenshot saved to …";
+// her own replies may mention the path too. Dedup so it appears once.
+const shownImages = new Set();
+function imagePaths(text) {
+  const re = /(\/[^\s"'()]+\.(?:png|jpe?g|webp|gif))/gi;
+  const out = []; let m;
+  while ((m = re.exec(text || ''))) out.push(m[1]);
+  return [...new Set(out)];
+}
+function showImage(path) {
+  if (shownImages.has(path)) return;
+  shownImages.add(path);
+  const card = el('imgcard');
+  const img = document.createElement('img');
+  img.src = q('/api/file?path=' + encodeURIComponent(path));
+  img.alt = path.split('/').pop();
+  img.onclick = () => window.open(img.src, '_blank');
+  img.onerror = () => card.remove();     // not servable / not really an image
+  card.appendChild(img);
+  const cap = document.createElement('div');
+  cap.className = 'cap';
+  cap.textContent = path.split('/').pop();
+  card.appendChild(cap);
+  log.scrollTop = log.scrollHeight;
+}
+
+// The welcome / empty state — a centered greeting with tappable starters
+// that show off her new eyes and drawing hand.
+function showWelcome() {
+  const w = document.createElement('div');
+  w.className = 'welcome';
+  w.id = 'welcome';
+  const starters = [
+    'Draw a concept sketch of ',
+    'Look at this screenshot and tell me what you see',
+    'What should we work on today?'
+  ];
+  w.innerHTML =
+    '<div class="hi">MER<span>GE</span></div>' +
+    '<div class="sub">I can read your files, look at images, draw, and build. ' +
+    'Tell me what to do — or start with one of these.</div>' +
+    '<div class="chips">' +
+    starters.map(s => '<div class="chip">' + esc(s.trim()) + '</div>').join('') +
+    '</div>';
+  log.appendChild(w);
+  w.querySelectorAll('.chip').forEach((c, i) => c.onclick = () => {
+    $('box').value = starters[i];
+    $('box').dispatchEvent(new Event('input'));
+    $('box').focus();
+  });
+}
+function clearWelcome() { const w = $('welcome'); if (w) w.remove(); }
+
+// Live streaming: text_delta events grow a bubble as she writes; the final
+// 'text' event replaces it with the authoritative markdown. A non-streamed
+// 'text' (old messages, replay) just makes a fresh bubble — backward safe.
+let streamBubble = null, streamText = '';
+function endStream() { streamBubble = null; streamText = ''; }
+
+function render(e) {
+  // The stream can legitimately replay after a reconnect (the browser
+  // retries with the URL it was built with, cursor and all) — drop
+  // anything already rendered instead of showing the chat twice.
+  if (typeof e.seq === 'number') {
+    if (e.seq < cursor) return;
+    cursor = e.seq + 1;
+  }
+
+  if (e.kind === 'user')        { clearWelcome(); endStream(); el('msg me', esc(e.text)); imagePaths(e.text).forEach(showImage); }
+  else if (e.kind === 'text_delta') {
+    clearWelcome();
+    const follow = atBottom();
+    if (!streamBubble) { streamBubble = el('msg bot'); streamText = ''; }
+    streamText += e.text;
+    streamBubble.innerHTML = md(streamText);
+    if (follow) scrollDown();
+  }
+  else if (e.kind === 'text')   {
+    let bubble;
+    if (streamBubble) { streamBubble.innerHTML = md(e.text); bubble = streamBubble; endStream(); }
+    else bubble = el('msg bot', md(e.text));
+    addCopyButtons(bubble);                                  // copy on any code she wrote
+    imagePaths(e.text).forEach(showImage);
+    if (voiceMode || speakAll) voiceReply += ' ' + e.text;   // collect to speak on done
+  }
+  else if (e.kind === 'tool')   { endStream(); el('step', '<b>' + esc(e.tool) + '</b> ' + esc(e.summary || '')); }
+  else if (e.kind === 'result') {
+    if ((e.text || '').trim()) el('out', esc(e.text.split('\n').slice(0, 6).join('\n')));
+    imagePaths(e.text).forEach(showImage);
+  }
+  else if (e.kind === 'error')  { endStream(); el('err', esc(e.text)); }
+  else if (e.kind === 'note')   el('note', esc(e.text));
+  else if (e.kind === 'permission') permission(e);
+  else if (e.kind === 'done')   { endStream(); setWorking(false); flushQueue();
+                                  if (voiceMode) speakAndContinue();
+                                  else if (speakAll) { const t = voiceReply.trim(); voiceReply = ''; if (t) say(t); } }
+}
+
+function permission(e) {
+  const card = el('perm');
+  const detail = e.args && (e.args.command || e.args.path || e.args.text || '');
+  card.innerHTML =
+    '<div class="what">Can I ' + esc(e.summary || e.tool) + '?</div>' +
+    (detail ? '<div class="detail">' + esc(detail) + '</div>' : '') +
+    '<div class="row"><button class="no">No</button><button class="yes">Yes</button></div>';
+  const answer = allow => {
+    card.classList.add('done');
+    card.querySelector('.what').textContent = (allow ? '✓ allowed: ' : '✗ refused: ')
+      + (e.summary || e.tool);
+    api('/api/permission', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ session: SESSION, id: e.id, allow })
+    }).catch(() => {});
+  };
+  card.querySelector('.yes').onclick = () => answer(true);
+  card.querySelector('.no').onclick  = () => answer(false);
+  log.scrollTop = log.scrollHeight;
+}
+
+let workTimer = null;
+function setWorking(on) {
+  working = on;
+  // send stays enabled while she works — a message typed now gets queued,
+  // not blocked. (See send()/queueMessage/flushQueue.)
+  const old = document.querySelector('.working');
+  if (old) old.remove();
+  if (workTimer) { clearInterval(workTimer); workTimer = null; }
+  if (on) {
+    const w = el('working');
+    const t0 = Date.now();
+    w.innerHTML = '<span class="think-pulse"></span>'
+      + '<span>Merge is thinking</span><span class="think-time"></span>';
+    const time = w.querySelector('.think-time');
+    const tick = () => {
+      const s = Math.floor((Date.now() - t0) / 1000);
+      time.textContent = ' · ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    };
+    tick();
+    workTimer = setInterval(tick, 1000);
+    const stop = document.createElement('button');
+    stop.textContent = 'Stop';
+    stop.className = 'stopbtn';
+    stop.style.cssText = 'margin-left:12px;padding:3px 14px;border-radius:8px;'
+      + 'border:1px solid var(--gold,#caa64a);background:transparent;'
+      + 'color:inherit;font:inherit;font-size:13px;cursor:pointer;';
+    stop.onclick = () => {
+      stop.disabled = true;
+      stop.textContent = 'stopping…';
+      api('/api/stop', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ session: SESSION })
+      }).catch(() => { stop.disabled = false; stop.textContent = 'Stop'; });
+    };
+    w.appendChild(stop);
+  }
+}
+
+let reconnectTimer = null;
+function connect() {
+  if (es) es.close();
+  es = new EventSource(q('/api/stream/' + SESSION + '?since=' + cursor));
+  es.onmessage = m => { try { render(JSON.parse(m.data)); } catch (_) {} };
+  // Reconnect ourselves with the CURRENT cursor rather than letting the
+  // browser retry the original URL forever — a page that slept through
+  // the end of a turn resumes exactly where it left off.
+  es.onerror = () => {
+    es.close();
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => { if (SESSION) connect(); }, 2000);
+  };
+}
+
+// The spinner's word is not enough: if the "done" event was lost while the
+// tablet slept, ask the server whether the agent is actually still busy.
+// The server saying busy:false is ground truth — re-enable sending.
+setInterval(async () => {
+  if (!working || !SESSION) return;
+  try {
+    const d = await api('/api/sessions');
+    const mine = (d.sessions || []).find(s => s.id === SESSION);
+    if (!mine || !mine.busy) { setWorking(false); flushQueue(); }
+  } catch (_) { /* offline — keep the spinner, the watchdog will retry */ }
+}, 8000);
+
+// Waking from sleep: reconnect immediately instead of waiting for a retry.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && SESSION) connect();
+});
+
+// Queue-ahead: you can type and send even while she's working. A message sent
+// mid-turn is held and dispatched automatically the instant she finishes — so
+// the chat never feels locked, and you never lose your train of thought.
+let pendingQueue = [];
+function queueMessage(text) {
+  clearWelcome();
+  const bubble = el('msg me queued', '⏳ ' + esc(text));
+  pendingQueue.push({ text, bubble });
+}
+function flushQueue() {
+  if (working || !pendingQueue.length) return;
+  const item = pendingQueue.shift();
+  if (item.bubble) item.bubble.remove();   // the real bubble arrives via the stream
+  dispatch(item.text);
+}
+
+function send() {
+  const text = $('box').value.trim();
+  if (!text) return;
+  $('box').value = '';
+  $('box').style.height = 'auto';
+  if (working) { queueMessage(text); return; }   // she's busy → queue it, don't block
+  clearWelcome();
+  dispatch(text);
+}
+
+async function dispatch(text) {
+  setWorking(true);
+  if (currentPrivacy() !== 'normal') sessionEphemeral = true;   // this chat leaves no trace
+  try {
+    // A send over a connection that died while the tablet slept can hang
+    // for minutes with no error. 15 seconds is generous for a LAN POST;
+    // after that, fail loudly and give the user their send button back.
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 15000);
+    const r = await api('/api/chat', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ message:text, session:SESSION, workspace:WORKSPACE,
+                             env: detectEnv(), mode: $('mode').value,
+                             privacy: currentPrivacy() }),
+      signal: ctl.signal
+    }).finally(() => clearTimeout(timer));
+    if (r.session !== SESSION) {
+      SESSION = r.session;
+      localStorage.setItem('forge-session', SESSION);
+      connect();
+    } else if (!es || es.readyState === 2) {
+      connect();               // stream died at some point — reattach
+    }
+    $('mModel').textContent = r.model;
+    $('mWs').textContent = r.workspace;
+  } catch (err) {
+    el('err', err.name === 'AbortError'
+      ? 'The server didn\'t answer in time — your message was put back. Try again.'
+      : 'Could not send: ' + err.message);
+    $('box').value = text;          // don't eat what they typed
+    setWorking(false);
+  }
+}
+
+$('send').onclick = send;
+$('box').addEventListener('input', function () {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, window.innerHeight * 0.34) + 'px';
+});
+$('box').addEventListener('keydown', e => {
+  // Enter sends on a real keyboard; on a phone the return key inserts a newline
+  if (e.key === 'Enter' && !e.shiftKey && !matchMedia('(pointer: coarse)').matches) {
+    e.preventDefault(); send();
+  }
+});
+// The conversations sidebar: saved sessions survive restarts server-side;
+// slides in from the left, each row deletable.
+function closeSidebar() { const b = document.querySelector('.sb-backdrop'); if (b) b.remove(); }
+function openSession(s) {
+  closeSidebar();
+  if (s.id === SESSION) return;
+  SESSION = s.id;
+  localStorage.setItem('forge-session', SESSION);
+  WORKSPACE = s.workspace;
+  localStorage.setItem('forge-workspace', WORKSPACE);
+  $('mWs').textContent = WORKSPACE;
+  endStream();
+  log.innerHTML = '';
+  cursor = 0;
+  setWorking(false);
+  connect();                   // replays the whole conversation from the server
+}
+$('chatsBtn').onclick = async () => {
+  if (document.querySelector('.sidebar')) { closeSidebar(); return; }
+  let d;
+  try { d = await api('/api/sessions'); } catch (_) { return; }
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sb-backdrop';
+  backdrop.onclick = closeSidebar;
+  const bar = document.createElement('div');
+  bar.className = 'sidebar';
+  bar.onclick = e => e.stopPropagation();     // clicks inside don't close it
+  bar.innerHTML = '<h3>Conversations</h3><div class="sb-list"></div>';
+  const listEl = bar.querySelector('.sb-list');
+  const sessions = d.sessions || [];
+  if (!sessions.length) {
+    listEl.innerHTML = '<div class="sb-empty">No saved conversations yet.</div>';
+  }
+  for (const s of sessions) {
+    const row = document.createElement('div');
+    row.className = 'sb-row' + (s.id === SESSION ? ' active' : '');
+    const when = new Date(s.last_used * 1000);
+    row.innerHTML =
+      '<div class="info"><div class="title">' + esc(s.title) + '</div>'
+      + '<div class="meta">' + esc(s.workspace.split('/').pop() || s.workspace)
+      + ' · ' + when.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})
+      + (s.busy ? ' · working' : '') + '</div></div>'
+      + '<button class="sb-del" title="Delete conversation">✕</button>';
+    row.querySelector('.info').onclick = () => openSession(s);
+    row.querySelector('.sb-del').onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm('Delete "' + s.title + '"? This can\'t be undone.')) return;
+      try { await api('/api/sessions/' + encodeURIComponent(s.id), { method: 'DELETE' }); }
+      catch (_) { return; }
+      row.remove();
+      if (s.id === SESSION) {          // deleted the open one → back to a fresh start
+        SESSION = null; localStorage.removeItem('forge-session');
+        endStream(); log.innerHTML = ''; cursor = 0; if (es) es.close(); showWelcome();
+      }
+      if (!listEl.querySelector('.sb-row'))
+        listEl.innerHTML = '<div class="sb-empty">No saved conversations yet.</div>';
+    };
+    listEl.appendChild(row);
+  }
+  backdrop.appendChild(bar);
+  document.body.appendChild(backdrop);
+};
+
+$('cogBtn').onclick = () => openSettings();
+
+// Full-screen toggle. Hidden where the browser can't do it (iOS Safari only
+// allows fullscreen on video) — there, the home-screen app is the way.
+(function () {
+  const root = document.documentElement;
+  const enter = root.requestFullscreen || root.webkitRequestFullscreen;
+  const exit = document.exitFullscreen || document.webkitExitFullscreen;
+  if (!enter) { $('fsBtn').style.display = 'none'; return; }
+  const isFS = () => document.fullscreenElement || document.webkitFullscreenElement;
+  $('fsBtn').onclick = () => {
+    try { isFS() ? exit.call(document) : enter.call(root); } catch (_) {}
+  };
+  const sync = () => {
+    const on = !!isFS();
+    $('fsBtn').textContent = on ? '⤢' : '⛶';
+    $('fsBtn').title = on ? 'Exit full screen' : 'Full screen';
+  };
+  document.addEventListener('fullscreenchange', sync);
+  document.addEventListener('webkitfullscreenchange', sync);
+})();
+
+// ---- voice input: tap to talk, tap to stop -------------------------
+// Browsers only grant the microphone on secure (https) pages — the button
+// simply doesn't appear where it couldn't work.
+
+// A live waveform while recording, so you can SEE it's listening. Purely
+// cosmetic — any failure here is swallowed so it can't break recording.
+let audioCtx = null, waveRAF = null;
+function startWave(stream) {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    audioCtx.createMediaStreamSource(stream).connect(analyser);
+    const canvas = $('wave');
+    canvas.style.display = 'block';
+    $('box').style.display = 'none';
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.clientWidth * dpr;
+    canvas.height = canvas.clientHeight * dpr;
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const accent = getComputedStyle(document.documentElement)
+                     .getPropertyValue('--accent').trim() || '#6fd3ff';
+    const draw = () => {
+      waveRAF = requestAnimationFrame(draw);
+      analyser.getByteTimeDomainData(data);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.lineWidth = 2 * dpr;
+      ctx.strokeStyle = accent;
+      ctx.beginPath();
+      const step = canvas.width / data.length;
+      for (let i = 0; i < data.length; i++) {
+        const y = (data[i] / 128.0) * canvas.height / 2;   // 128 = silence
+        i === 0 ? ctx.moveTo(0, y) : ctx.lineTo(i * step, y);
+      }
+      ctx.stroke();
+    };
+    draw();
+  } catch (_) { /* cosmetic only */ }
+}
+function stopWave() {
+  if (waveRAF) { cancelAnimationFrame(waveRAF); waveRAF = null; }
+  if (audioCtx) { try { audioCtx.close(); } catch (_) {} audioCtx = null; }
+  $('wave').style.display = 'none';
+  $('box').style.display = '';
+}
+
+let rec = null, chunks = [];
+if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+  $('mic').style.display = '';
+  $('mic').onclick = async () => {
+    if (rec && rec.state === 'recording') { rec.stop(); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+      chunks = [];
+      rec = new MediaRecorder(stream, MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? {mimeType: 'audio/webm;codecs=opus'} : undefined);
+      rec.ondataavailable = e => chunks.push(e.data);
+      rec.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        stopWave();
+        $('mic').textContent = '…';
+        try {
+          const blob = new Blob(chunks, {type: rec.mimeType || 'audio/webm'});
+          const r = await fetch(q('/api/listen'), {method: 'POST',
+            headers: {'Content-Type': blob.type}, body: blob});
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          const d = await r.json();
+          if (d.text) {
+            $('box').value = ($('box').value ? $('box').value + ' ' : '') + d.text;
+            $('box').dispatchEvent(new Event('input'));
+            // NOTE: no .focus() — that popped the phone keyboard uninvited.
+            // The text sits in the box; tap it to edit, or just hit send.
+          }
+        } catch (err) {
+          el('err', 'Could not transcribe: ' + err.message);
+        }
+        $('mic').textContent = '🎤';
+        $('mic').classList.remove('recbtn');
+      };
+      rec.start();
+      startWave(stream);
+      $('mic').textContent = '⏺';
+      $('mic').classList.add('recbtn');
+    } catch (err) {
+      el('err', 'Microphone unavailable: ' + err.message);
+    }
+  };
+}
+
+// ---- camera-send: snap a photo and send it to her for context ----------
+// On a phone the capture attribute opens the camera directly; on desktop it's
+// a file picker. Most useful in AR — point at something and send it to her.
+function showCamButton() { $('cam').style.display = ''; }
+if (matchMedia('(pointer: coarse)').matches) showCamButton();   // phones/tablets
+$('cam').onclick = () => $('camInput').click();
+$('camInput').onchange = async () => {
+  const file = $('camInput').files[0];
+  $('camInput').value = '';        // let the same file be picked again
+  if (!file) return;
+  $('cam').textContent = '⏳';
+  try {
+    const buf = await file.arrayBuffer();
+    const r = await fetch(q('/api/upload?session=' + encodeURIComponent(SESSION || '')),
+      { method: 'POST', headers: {'Content-Type': file.type || 'image/jpeg'}, body: buf });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (d.path) {
+      if (d.session && d.session !== SESSION) {   // a photo can start a fresh chat
+        SESSION = d.session;
+        localStorage.setItem('forge-session', SESSION);
+        connect();
+      }
+      const caption = $('box').value.trim();
+      $('box').value = '';
+      $('box').style.height = 'auto';
+      const msg = (caption ? caption + '\n\n' : "Here's a photo — take a look.\n\n")
+                  + 'Image: ' + d.path;
+      if (working) queueMessage(msg); else { clearWelcome(); dispatch(msg); }
+    }
+  } catch (err) {
+    el('err', 'Could not send the photo: ' + err.message);
+  }
+  $('cam').textContent = '📷';
+};
+
+// ---- hands-free voice chat: talk, she answers aloud, repeat -------------
+// Output uses the DEVICE's own speech synthesis (plays on your phone, not the
+// server); silence detection ends your turn; Flash style keeps it snappy.
+let voiceMode = false, voiceReply = '', voicePrevMode = 'auto';
+if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && 'speechSynthesis' in window) {
+  $('voiceBtn').style.display = '';
+}
+
+// "Speak everything" toggle: read every reply aloud, even ones you typed. This
+// is separate from hands-free voice chat — no mic, just her talking back.
+let speakAll = localStorage.getItem('forge-speak-all') === '1';
+function setSpeakUI() {
+  $('speakBtn').textContent = speakAll ? '🔊' : '🔈';
+  $('speakBtn').classList.toggle('spk-on', speakAll);
+  $('speakBtn').title = speakAll ? 'Reading replies aloud — tap to mute' : 'Read her replies aloud';
+}
+$('speakBtn').onclick = () => {
+  speakAll = !speakAll;
+  localStorage.setItem('forge-speak-all', speakAll ? '1' : '0');
+  setSpeakUI();
+  if (!speakAll) stopSpeaking();          // muting stops any reply she's mid-way through
+};
+setSpeakUI();
+function setVoiceUI(on) {
+  $('voiceBtn').textContent = on ? '⏹' : '🎙️';
+  $('voiceBtn').classList.toggle('recbtn', on);
+}
+$('voiceBtn').onclick = () => {
+  if (vpLong) { vpLong = false; return; }           // that was a long-press (settings)
+  if (voiceMode) {
+    voiceMode = false; setVoiceUI(false);
+    stopSpeaking();
+    stopWave();
+    $('mode').value = voicePrevMode;               // restore the style
+    el('note', 'Voice chat off.');
+    return;
+  }
+  voiceMode = true; setVoiceUI(true);
+  voicePrevMode = $('mode').value;
+  $('mode').value = 'flash';                        // snappy replies for talking
+  el('note', "Voice chat on — just talk. Pause and I'll answer out loud. Tap ⏹ to stop. "
+           + "(Hold 🎙️ any time to change her voice.)");
+  voiceListen();
+};
+
+async function voiceListen() {
+  if (!voiceMode) return;
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({audio: true}); }
+  catch (e) { el('err', 'Mic unavailable: ' + e.message); voiceMode = false; setVoiceUI(false); return; }
+  startWave(stream);
+  const actx = new (window.AudioContext || window.webkitAudioContext)();
+  const analyser = actx.createAnalyser(); analyser.fftSize = 512;
+  actx.createMediaStreamSource(stream).connect(analyser);
+  const rec = new MediaRecorder(stream, MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? {mimeType: 'audio/webm;codecs=opus'} : undefined);
+  const chunks = []; rec.ondataavailable = e => chunks.push(e.data);
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  let spoke = false, silence = null, floor = 0, calibN = 0;
+  const t0 = performance.now();
+  const monitor = () => {
+    if (!voiceMode || rec.state !== 'recording') return;
+    analyser.getByteTimeDomainData(data);
+    let s = 0; for (const v of data) s += Math.abs(v - 128);
+    const level = s / data.length, now = performance.now();
+    // Learn this mic's ambient noise floor for the first 500ms, then set the
+    // "is she talking?" line above it. A fixed threshold mis-fires on hot mics
+    // (the iPad) whose idle level never dips below a constant, so the turn
+    // never ends — calibrating to the room fixes that.
+    if (now - t0 < 500) {
+      floor = (floor * calibN + level) / (calibN + 1); calibN++;
+      requestAnimationFrame(monitor); return;
+    }
+    const f = Math.min(floor, 10);   // cap so a noisy calibration can't go deaf
+    const speakLevel = Math.max(f + 4, f * 1.9, 6);
+    if (level > speakLevel) { spoke = true; silence = null; }      // clearly talking
+    else if (spoke) {                                              // trailing quiet → end soon
+      if (!silence) silence = now;
+      else if (now - silence > 1300) { rec.stop(); return; }
+    }
+    if (now - t0 > 20000) { rec.stop(); return; }    // 20s safety cap
+    requestAnimationFrame(monitor);
+  };
+  rec.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    try { actx.close(); } catch (_) {}
+    stopWave();
+    if (!voiceMode) return;
+    if (!spoke) { voiceListen(); return; }            // heard nothing → keep listening
+    try {
+      const blob = new Blob(chunks, {type: rec.mimeType || 'audio/webm'});
+      const r = await fetch(q('/api/listen'), {method: 'POST',
+        headers: {'Content-Type': blob.type}, body: blob});
+      const d = await r.json();
+      if (d.text && d.text.trim()) {
+        voiceReply = '';
+        clearWelcome();
+        if (working) queueMessage(d.text); else dispatch(d.text);
+      } else voiceListen();                            // nothing heard → listen again
+    } catch (e) { el('err', 'Transcribe failed: ' + e.message); if (voiceMode) voiceListen(); }
+  };
+  rec.start(); requestAnimationFrame(monitor);
+}
+
+// Apply the chosen voice + peppier defaults (bright pitch, lively speed) to
+// any utterance. Defaults chosen to counter the flat, gloomy stock voice.
+function applyVoice(u) {
+  u.rate = parseFloat(localStorage.getItem('forge-voice-rate') || '1.1');
+  u.pitch = parseFloat(localStorage.getItem('forge-voice-pitch') || '1.18');
+  const name = localStorage.getItem('forge-voice-name');
+  if (name) {
+    const v = (speechSynthesis.getVoices() || []).find(x => x.name === name);
+    if (v) u.voice = v;
+  }
+}
+
+// After she finishes a reply, speak it, then listen again.
+function speakAndContinue() {
+  const text = voiceReply.trim(); voiceReply = '';
+  if (!voiceMode) return;
+  if (!text) { voiceListen(); return; }
+  say(text).then(() => { if (voiceMode) voiceListen(); });
+}
+
+// Voices load asynchronously on some browsers — warm the list.
+if ('speechSynthesis' in window) {
+  speechSynthesis.getVoices();
+  speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
+}
+
+// ---- her real voice: piper on the server, played on the device ----------
+// The phone's own speech synthesis only offers whatever robotic voices it
+// ships. The server renders her one good voice with piper and streams the wav
+// here, so she sounds the same everywhere. Browser voices stay as a fallback.
+let SERVER_VOICES = [];
+let curAudio = null;
+fetch(q('/api/voices')).then(r => r.json())
+  .then(d => { SERVER_VOICES = d.voices || []; }).catch(() => {});
+
+// Which server voice to use: an explicit 'srv:<id>' choice, or — when nothing
+// is chosen yet — Amy by default so she sounds good out of the box.
+function serverVoicePref() {
+  const name = localStorage.getItem('forge-voice-name') || '';
+  if (name.startsWith('srv:')) return name.slice(4);
+  if (!name && SERVER_VOICES.length)
+    return (SERVER_VOICES.find(v => v.id === 'en_US-amy-medium') || SERVER_VOICES[0]).id;
+  return '';   // a device voice was explicitly picked
+}
+
+// Every stopSpeaking() bumps this; an in-flight say() checks it to know it's
+// been superseded (a new reply, or the user tapped stop) and bails cleanly.
+let speakSeq = 0;
+function stopSpeaking() {
+  speakSeq++;
+  try { if (curAudio) { curAudio.pause(); curAudio = null; } } catch (_) {}
+  try { speechSynthesis.cancel(); } catch (_) {}
+}
+
+// Group her reply into speakable chunks. The FIRST is kept short so she starts
+// talking within ~a second; the rest are larger (a few sentences each) so piper
+// has room to shape natural inflection instead of clipping every sentence flat.
+function chunkForSpeech(t) {
+  const sents = ((t || '').replace(/\s+/g, ' ').match(/[^.!?…\n]+[.!?…]*/g) || [t])
+    .map(s => s.trim()).filter(Boolean);
+  const out = []; let buf = '';
+  for (const s of sents) {
+    buf = buf ? buf + ' ' + s : s;
+    const target = out.length === 0 ? 90 : 220;   // quick first chunk, fuller ones after
+    if (buf.length >= target) { out.push(buf); buf = ''; }
+  }
+  if (buf) out.push(buf);
+  return out.length ? out : [(t || '').trim()].filter(Boolean);
+}
+
+function fetchWav(text, voiceId) {
+  return fetch(q('/api/speak'), {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text: text, voice: voiceId})})
+    .then(r => r.ok ? r.blob() : Promise.reject())
+    .then(b => URL.createObjectURL(b));
+}
+
+function playChunk(url) {
+  return new Promise(res => {
+    const a = new Audio(url); curAudio = a;
+    const fin = () => { URL.revokeObjectURL(url); if (curAudio === a) curAudio = null; res(); };
+    a.onended = fin; a.onerror = fin;
+    a.play().catch(fin);
+  });
+}
+
+// Server voice, chunk-streamed: render + play the first sentence, and prefetch
+// the next while the current one plays. mySeq guards against being superseded.
+async function sayServer(text, voiceId, mySeq) {
+  const chunks = chunkForSpeech(text.slice(0, 2000));
+  if (!chunks.length) return;
+  let nextUrl = fetchWav(chunks[0], voiceId);
+  for (let i = 0; i < chunks.length; i++) {
+    let url;
+    try { url = await nextUrl; }
+    catch (_) {                                   // server hiccup → device voice for the rest
+      if (speakSeq !== mySeq) return;
+      await new Promise(r => browserSay(chunks.slice(i).join(' '), r));
+      return;
+    }
+    if (speakSeq !== mySeq) { URL.revokeObjectURL(url); return; }   // superseded / stopped
+    nextUrl = (i + 1 < chunks.length) ? fetchWav(chunks[i + 1], voiceId).catch(() => null)
+                                      : Promise.resolve(null);
+    await playChunk(url);
+    if (speakSeq !== mySeq) return;
+  }
+}
+
+// Speak a line and resolve when it finishes. Prefers her server voice, chunk by
+// chunk; falls back to the device voice if the server can't render it.
+function say(text) {
+  text = (text || '').trim();
+  if (!text) return Promise.resolve();
+  stopSpeaking();                     // cancel whatever's currently talking
+  const mySeq = speakSeq;
+  const sv = serverVoicePref();
+  if (sv) return sayServer(text, sv, mySeq).catch(() => new Promise(r => browserSay(text, r)));
+  return new Promise(r => browserSay(text, r));
+}
+
+function browserSay(text, done) {
+  if (!('speechSynthesis' in window)) { done && done(); return; }
+  const u = new SpeechSynthesisUtterance(text.slice(0, 800));
+  applyVoice(u);
+  u.onend = () => done && done();
+  u.onerror = () => done && done();
+  try { speechSynthesis.cancel(); speechSynthesis.speak(u); }
+  catch (_) { done && done(); }
+}
+
+// Voice settings panel: pick the voice, pitch, and speed, with a Test button.
+// Reuses the folder-picker modal styling.
+function openVoiceSettings() {
+  if (document.querySelector('.fmodal-bg')) return;
+  const all = speechSynthesis.getVoices() || [];
+  const eng = all.filter(v => /^en/i.test(v.lang));
+  const voices = eng.length ? eng.concat(all.filter(v => !/^en/i.test(v.lang))) : all;
+  const cur = localStorage.getItem('forge-voice-name') || '';
+  const pitch = localStorage.getItem('forge-voice-pitch') || '1.18';
+  const rate = localStorage.getItem('forge-voice-rate') || '1.1';
+  // Which server voice the dropdown should show as picked.
+  const selServer = cur.startsWith('srv:') ? cur.slice(4)
+    : (cur === '' ? ((SERVER_VOICES.find(v => v.id === 'en_US-amy-medium') || SERVER_VOICES[0] || {}).id || '')
+                  : '');
+  const serverOpts = SERVER_VOICES.length
+    ? '<optgroup label="Her voices — recommended">' + SERVER_VOICES.map(v =>
+        '<option value="srv:' + esc(v.id) + '"' + (v.id === selServer ? ' selected' : '') +
+        '>' + esc(v.label) + '</option>').join('') + '</optgroup>' : '';
+  const devOpts = voices.length
+    ? '<optgroup label="Device voices">' + voices.map(v =>
+        '<option value="' + esc(v.name) + '"' + (v.name === cur ? ' selected' : '') +
+        '>' + esc(v.name) + ' — ' + esc(v.lang) + '</option>').join('') + '</optgroup>' : '';
+  const optsHtml = (serverOpts + devOpts) || '<option>(device default)</option>';
+  const bg = document.createElement('div'); bg.className = 'fmodal-bg';
+  bg.onclick = () => bg.remove();
+  const box = document.createElement('div'); box.className = 'fmodal';
+  box.onclick = e => e.stopPropagation();
+  box.innerHTML =
+    '<h3>Her voice</h3>' +
+    '<div style="padding:2px 16px 12px;display:flex;flex-direction:column;gap:16px">' +
+      '<label style="font-size:12px;color:var(--dim)">Voice' +
+        '<select id="voiceSel" style="width:100%;margin-top:6px;background:#0d0f16;' +
+          'color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:11px;' +
+          'font-size:15px;font-family:inherit">' + optsHtml +
+        '</select></label>' +
+      '<label style="font-size:12px;color:var(--dim)">Pitch (higher = brighter) · ' +
+        '<span id="pV">' + pitch + '</span>' +
+        '<input id="pitchSel" type="range" min="0.6" max="2" step="0.05" value="' + pitch +
+        '" style="width:100%;margin-top:4px"></label>' +
+      '<label style="font-size:12px;color:var(--dim)">Speed · <span id="rV">' + rate + '</span>' +
+        '<input id="rateSel" type="range" min="0.7" max="1.6" step="0.05" value="' + rate +
+        '" style="width:100%;margin-top:4px"></label>' +
+      '<div style="font-size:11px;color:var(--dim);opacity:.8">Her voices (top) come from ' +
+        'the PC and stream in as she talks — same on every device. A device voice plays ' +
+        'instantly from this phone; pitch &amp; speed apply only to those.</div>' +
+    '</div>' +
+    '<div class="foot"><button class="cancel">Close</button><button class="use">▶ Test</button></div>';
+  bg.appendChild(box); document.body.appendChild(bg);
+  const save = () => {
+    if (box.querySelector('#voiceSel').value)
+      localStorage.setItem('forge-voice-name', box.querySelector('#voiceSel').value);
+    localStorage.setItem('forge-voice-pitch', box.querySelector('#pitchSel').value);
+    localStorage.setItem('forge-voice-rate', box.querySelector('#rateSel').value);
+  };
+  box.querySelector('#voiceSel').onchange = save;
+  box.querySelector('#pitchSel').oninput = e => { box.querySelector('#pV').textContent = e.target.value; save(); };
+  box.querySelector('#rateSel').oninput = e => { box.querySelector('#rV').textContent = e.target.value; save(); };
+  box.querySelector('.cancel').onclick = () => bg.remove();
+  box.querySelector('.use').onclick = () => {
+    save();
+    stopSpeaking();
+    say("Hey! This is how I sound now. Better?");
+  };
+}
+
+// A memorable, easy-to-say passphrase: three clear, distinct words. Voice
+// chat has to hear it, and you have to remember it.
+const _PHRASE_WORDS = ['amber','otter','canyon','harbor','maple','comet','pepper',
+  'willow','cobalt','meadow','ember','lantern','pebble','cricket','saffron','juniper',
+  'marble','walnut','copper','thistle','falcon','indigo','pumpkin','anchor'];
+function suggestPhrase() {
+  const pick = () => _PHRASE_WORDS[Math.floor(Math.random() * _PHRASE_WORDS.length)];
+  const out = [];
+  while (out.length < 3) { const w = pick(); if (!out.includes(w)) out.push(w); }
+  return out.join(' ');
+}
+
+// The ⚙ settings panel: who she talks to (owner + challenge phrase), a way
+// into the voice options, and a link on to the full admin page.
+function openSettings() {
+  if (document.querySelector('.fmodal-bg')) return;
+  const INP = 'width:100%;margin-top:6px;background:#0d0f16;color:var(--ink);' +
+    'border:1px solid var(--line);border-radius:8px;padding:11px;font-size:15px;' +
+    'font-family:inherit;box-sizing:border-box';
+  const ROW = 'display:block;width:100%;box-sizing:border-box;text-align:left;' +
+    'background:#2a2f3d;color:var(--ink);border:1px solid var(--line);border-radius:10px;' +
+    'padding:13px;font-size:14px;font-family:inherit;cursor:pointer';
+  const adminHref = '/' + (TOKEN ? '?token=' + encodeURIComponent(TOKEN) : '');
+  const bg = document.createElement('div'); bg.className = 'fmodal-bg';
+  bg.onclick = () => bg.remove();
+  const box = document.createElement('div'); box.className = 'fmodal';
+  box.onclick = e => e.stopPropagation();
+  box.innerHTML =
+    '<h3>Settings</h3>' +
+    '<div style="padding:2px 16px 14px;display:flex;flex-direction:column;gap:18px">' +
+      '<div>' +
+        '<label style="display:flex;align-items:center;gap:10px;font-size:13px;cursor:pointer;margin-bottom:4px">' +
+          '<input type="checkbox" id="idEnabled" style="width:18px;height:18px;accent-color:var(--accent)">' +
+          '🔒 Identity checks &amp; challenge phrase</label>' +
+        '<div id="idHint" style="font-size:11px;color:#e0b050;margin:0 0 10px 28px;display:none"></div>' +
+        '<label style="font-size:12px;color:var(--dim)">Your name' +
+          '<input id="ownerName" placeholder="e.g. your name" style="' + INP + '"></label>' +
+        '<label style="font-size:12px;color:var(--dim);margin-top:12px;display:block">' +
+          'Challenge phrase <span id="phraseState" style="color:var(--dim)"></span>' +
+          '<div style="display:flex;gap:6px;margin-top:6px">' +
+            '<input id="phraseInput" type="password" autocomplete="new-password" ' +
+              'placeholder="leave blank to keep current" style="' + INP + ';margin-top:0;flex:1">' +
+            '<button id="suggestPhrase" type="button" style="flex:0 0 auto;background:#2a2f3d;' +
+              'color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:0 12px;' +
+              'font-size:13px;font-family:inherit;cursor:pointer">Suggest</button>' +
+          '</div></label>' +
+        '<div style="font-size:11px;color:var(--dim);margin-top:8px;line-height:1.5">' +
+          "She never sees this — it's checked on the server, and she asks for it only if a " +
+          "conversation seems off (and keeps asking if it's wrong). Stored scrambled, so pick " +
+          "something you'll remember. " +
+          '<a id="clearPhrase" href="#" style="color:var(--accent);display:none">clear it</a></div>' +
+      '</div>' +
+      '<button id="toVoice" style="' + ROW + '">🎙️ Voice &amp; speech options →</button>' +
+      '<a href="' + adminHref + '" style="' + ROW + ';text-decoration:none">⚙ Full admin &amp; models →</a>' +
+    '</div>' +
+    '<div class="foot"><button class="cancel">Close</button><button class="use">Save</button></div>';
+  bg.appendChild(box); document.body.appendChild(bg);
+
+  let hasPhrase = false;
+  function updateIdHint() {
+    const on = box.querySelector('#idEnabled').checked;
+    const willHave = hasPhrase || box.querySelector('#phraseInput').value.trim();
+    const hint = box.querySelector('#idHint');
+    if (on && !willHave) { hint.textContent = '⚠ Add a phrase below to actually arm it.'; hint.style.display = ''; }
+    else hint.style.display = 'none';
+  }
+  fetch(q('/api/identity')).then(r => r.json()).then(d => {
+    box.querySelector('#idEnabled').checked = !!d.enabled;
+    box.querySelector('#ownerName').value = d.owner_name || '';
+    hasPhrase = !!d.has_phrase;
+    box.querySelector('#phraseState').textContent = hasPhrase ? '· set ✓' : '· not set';
+    if (hasPhrase) box.querySelector('#clearPhrase').style.display = '';
+    updateIdHint();
+  }).catch(() => {});
+
+  box.querySelector('#idEnabled').onchange = updateIdHint;
+  box.querySelector('#phraseInput').oninput = updateIdHint;
+  box.querySelector('#suggestPhrase').onclick = () => {
+    const inp = box.querySelector('#phraseInput');
+    inp.type = 'text';                       // show it so it's easy to read + remember
+    inp.value = suggestPhrase();
+    updateIdHint();
+  };
+  box.querySelector('#toVoice').onclick = () => { bg.remove(); openVoiceSettings(); };
+  box.querySelector('#clearPhrase').onclick = e => {
+    e.preventDefault();
+    fetch(q('/api/identity'), {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({phrase: ''})}).then(() => {
+        box.querySelector('#phraseState').textContent = '· not set';
+        box.querySelector('#phraseInput').value = '';
+        box.querySelector('#clearPhrase').style.display = 'none';
+        el('note', 'Challenge phrase cleared.');
+      });
+  };
+  box.querySelector('.cancel').onclick = () => bg.remove();
+  box.querySelector('.use').onclick = () => {
+    const owner = box.querySelector('#ownerName').value.trim();
+    const phrase = box.querySelector('#phraseInput').value;
+    const body = {enabled: box.querySelector('#idEnabled').checked, owner_name: owner};
+    if (phrase.trim()) body.phrase = phrase;          // only set when they typed one
+    fetch(q('/api/identity'), {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)}).then(r => r.json()).then(d => {
+        const armed = d.enabled && d.has_phrase;
+        el('note', 'Saved. Identity checks are ' + (armed ? 'ON' : 'off') +
+          (d.enabled && !d.has_phrase ? ' (add a phrase to arm them).' : '.'));
+        bg.remove();
+      }).catch(() => el('err', 'Could not save settings.'));
+  };
+}
+
+// Long-press the 🎙️ button opens voice settings; a normal tap toggles chat.
+let vpLong = false, vpTimer = null;
+$('voiceBtn').addEventListener('pointerdown', () => {
+  vpLong = false;
+  vpTimer = setTimeout(() => { vpLong = true; openVoiceSettings(); }, 550);
+});
+['pointerup', 'pointerleave', 'pointercancel'].forEach(ev =>
+  $('voiceBtn').addEventListener(ev, () => clearTimeout(vpTimer)));
+
+// ---- AR mode (Quest and friends) -----------------------------------
+// WebXR immersive-ar with the page as a DOM overlay: the room stays
+// visible in passthrough, the chat floats on top, taps and the mic keep
+// working. Requires https, hence the certificate.
+if (navigator.xr && navigator.xr.isSessionSupported) {
+  navigator.xr.isSessionSupported('immersive-ar').then(ok => {
+    if (!ok) return;
+    $('arBtn').style.display = '';
+    const enterAR = async () => {
+      try {
+        const session = await navigator.xr.requestSession('immersive-ar', {
+          optionalFeatures: ['dom-overlay'],
+          domOverlay: {root: document.documentElement}
+        });
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl', {xrCompatible: true});
+        await session.updateRenderState({baseLayer: new XRWebGLLayer(session, gl)});
+        const loop = () => { session.requestAnimationFrame(loop); };
+        session.requestAnimationFrame(loop);
+        arActive = true;                 // she'll be told she's in AR now
+        showCamButton();                 // camera-send is most useful here
+        $('arBtn').textContent = 'Exit AR';
+        $('arBtn').onclick = () => session.end().catch(() => {});
+        session.addEventListener('end', () => {
+          arActive = false;
+          $('arBtn').textContent = 'AR';
+          $('arBtn').onclick = enterAR;
+        });
+      } catch (err) {
+        el('err', 'Could not start AR: ' + err.message);
+      }
+    };
+    $('arBtn').onclick = enterAR;
+  }).catch(() => {});
+}
+
+function newChat(confirmFirst) {
+  if (confirmFirst && !confirm('Start a fresh conversation?')) return;
+  // Delete-after: an off-the-record chat is dropped from the server too, so it
+  // truly leaves nothing behind (it was never on disk; this clears it from RAM).
+  if (SESSION && sessionEphemeral) fetch(q('/api/sessions/' + SESSION), {method: 'DELETE'}).catch(() => {});
+  SESSION = null;
+  sessionEphemeral = false;
+  localStorage.removeItem('forge-session');
+  endStream();
+  log.innerHTML = '';
+  cursor = 0;
+  if (es) es.close();
+  showWelcome();          // folder stays as-is; tap the folder name up top to change it
+}
+$('newBtn').onclick = () => newChat(true);
+
+// A real, browsable folder picker (replaces the old prompt()). Tap the folder
+// name in the header, or New, to open it. Uses /api/browse to walk directories.
+function pickFolder() {
+  if (document.querySelector('.fmodal-bg')) return;
+  let cur = WORKSPACE || '';
+  const bg = document.createElement('div');
+  bg.className = 'fmodal-bg';
+  bg.onclick = () => bg.remove();
+  const box = document.createElement('div');
+  box.className = 'fmodal';
+  box.onclick = e => e.stopPropagation();
+  bg.appendChild(box);
+  document.body.appendChild(bg);
+
+  async function load(path) {
+    let b;
+    try { b = await api('/api/browse?path=' + encodeURIComponent(path || '')); }
+    catch (_) { return; }
+    cur = b.path;
+    box.innerHTML =
+      '<h3>Working folder</h3><div class="cur">' + esc(cur) + '</div>' +
+      '<div class="flist"></div>' +
+      '<div class="foot"><button class="cancel">Cancel</button>' +
+      '<button class="use">Use this folder</button></div>';
+    const list = box.querySelector('.flist');
+    if (b.parent && b.parent !== b.path) {
+      const up = document.createElement('div');
+      up.className = 'frow';
+      up.innerHTML = '<span class="ic">↑</span> ..';
+      up.onclick = () => load(b.parent);
+      list.appendChild(up);
+    }
+    for (const d of (b.dirs || [])) {
+      const r = document.createElement('div');
+      r.className = 'frow';
+      r.innerHTML = '<span class="ic">📁</span> ' + esc(d);
+      r.onclick = () => load((b.path.endsWith('/') ? b.path : b.path + '/') + d);
+      list.appendChild(r);
+    }
+    box.querySelector('.cancel').onclick = () => bg.remove();
+    box.querySelector('.use').onclick = () => {
+      WORKSPACE = cur;
+      localStorage.setItem('forge-workspace', WORKSPACE);
+      $('mWs').textContent = WORKSPACE;
+      bg.remove();
+    };
+  }
+  load(cur);
+}
+
+// The header dot tells you whether her BRAIN is actually reachable, not just
+// the dashboard: green = awake, amber = loading / swapped / not responding,
+// red = can't reach the dashboard at all. Tap the dot for the detail (phones
+// have no hover). Polled so a model swap shows up on its own.
+async function checkHealth() {
+  const dot = $('statusDot');
+  try {
+    const h = await api('/api/health');
+    if (h.reachable) { dot.className = 'dot on'; dot.dataset.msg = 'Merge is awake' + (h.model ? ' (' + h.model + ')' : ''); }
+    else { dot.className = 'dot warn'; dot.dataset.msg = "Her model isn't responding — " + (h.detail || '') + '. Loading or swapped out?'; }
+  } catch (e) {
+    dot.className = 'dot off'; dot.dataset.msg = "Can't reach the dashboard.";
+  }
+  dot.title = dot.dataset.msg;
+}
+
+(async function init() {
+  try {
+    const cfg = await api('/api/config');
+    $('mModel').textContent = cfg.active_model;
+    checkHealth();
+    setInterval(checkHealth, 20000);
+    const meta = document.querySelector('.meta > div:first-child');
+    if (meta) meta.onclick = () => { checkHealth(); el('note', $('statusDot').dataset.msg || 'Checking…'); };
+    if (!WORKSPACE) { WORKSPACE = ''; }
+    $('mWs').textContent = WORKSPACE || '(pick a folder)';
+    $('mWs').title = 'Change working folder';
+    $('mWs').onclick = pickFolder;
+    if (SESSION) {
+      connect();
+    } else {
+      showWelcome();
+    }
+  } catch (err) {
+    if (err.message !== 'unauthorized') el('err', 'Cannot reach Forge: ' + err.message);
+  }
+})();
+</script>
+</body>
+</html>

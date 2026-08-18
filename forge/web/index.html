@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forge</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --line: #262b38; --ink: #e6e9f0;
+    --dim: #8a92a6; --accent: #6fd3ff; --good: #67e39b; --bad: #ff6b6b;
+    --gold: #ffd86b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    padding: 24px 16px 60px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 20px; letter-spacing: .16em; margin: 0 0 2px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--dim); font-size: 13px; margin-bottom: 22px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px 18px; margin-bottom: 16px;
+  }
+  .card h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .14em;
+    color: var(--dim); margin: 0 0 12px; font-weight: 600;
+  }
+  .model {
+    display: flex; align-items: center; gap: 12px; padding: 11px 12px;
+    border: 1px solid var(--line); border-radius: 9px; margin-bottom: 8px;
+    cursor: pointer; transition: border-color .12s, background .12s;
+  }
+  .model:hover { border-color: var(--accent); }
+  .model.active { border-color: var(--good); background: #67e39b12; }
+  .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--line); flex-shrink: 0;
+  }
+  .model.active .dot { background: var(--good); box-shadow: 0 0 8px #67e39b90; }
+  .model .name { font-weight: 600; }
+  .model .meta { color: var(--dim); font-size: 12.5px; }
+  .model .grow { flex: 1; min-width: 0; }
+  .tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 20px;
+    border: 1px solid var(--line); color: var(--dim);
+  }
+  button {
+    background: #222736; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 14px; font-size: 13.5px; cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { border-color: var(--gold); color: var(--gold); }
+  button.danger:hover { border-color: var(--bad); color: var(--bad); }
+  input, select {
+    background: #0d0f16; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 9px 11px; font-size: 13.5px; width: 100%;
+    font-family: inherit;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  label { display: block; font-size: 12px; color: var(--dim); margin: 0 0 4px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .row.thirds { grid-template-columns: 1fr 1fr 1fr; }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .hint { color: var(--dim); font-size: 12.5px; margin-top: 10px; }
+  .seg { display: flex; gap: 6px; }
+  .seg button.on { border-color: var(--accent); color: var(--accent); background: #6fd3ff14; }
+  #toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+    background: var(--panel); border: 1px solid var(--good); color: var(--good);
+    padding: 10px 18px; border-radius: 10px; font-size: 13.5px;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  #toast.show { opacity: 1; }
+  #toast.err { border-color: var(--bad); color: var(--bad); }
+  code {
+    background: #0d0f16; padding: 2px 6px; border-radius: 5px;
+    font-size: 12.5px; color: var(--accent);
+  }
+  @media (max-width: 620px) {
+    .row, .row.thirds { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>MER<span>GE</span></h1>
+  <div class="sub">Merge's control panel. Changes land everywhere on your next message.</div>
+  <nav style="margin:10px 0 18px 0; display:flex; gap:14px; font-size:14px">
+    <a href="/chat">← Chat</a>
+    <a href="/bricks">Bricks</a>
+    <a href="/help">Help &amp; health</a>
+  </nav>
+
+  <div class="card">
+    <h2>Models</h2>
+    <div id="models"></div>
+    <div class="hint" id="health">checking…</div>
+  </div>
+
+  <div class="card">
+    <h2>Power</h2>
+    <div class="bar">
+      <button class="danger" id="btn-off">⏻ Shut her down</button>
+      <button id="btn-on">Wake her up</button>
+      <span class="hint" style="margin-top:0" id="power-status">checking…</span>
+    </div>
+    <div class="hint">Off stops the local models and hands the graphics card
+      back. This page stays up, so you can wake her from here (loading takes
+      about a minute). Same thing from a terminal: <code>forge off</code> /
+      <code>forge on</code>.</div>
+  </div>
+
+  <div class="card">
+    <h2>Add or edit a model</h2>
+    <div class="row">
+      <div>
+        <label>Nickname (what you type after /model)</label>
+        <input id="f-name" placeholder="local-big">
+      </div>
+      <div>
+        <label>Kind</label>
+        <select id="f-provider">
+          <option value="openai-compat">Local (Ollama · llama.cpp · LM Studio)</option>
+          <option value="anthropic">Claude (Anthropic)</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Model name</label>
+        <input id="f-model" placeholder="qwen2.5-coder:14b">
+        <datalist id="claude-models">
+          <option value="claude-opus-5">best for coding — recommended</option>
+          <option value="claude-fable-5">most capable, priciest</option>
+          <option value="claude-sonnet-5">fast + smart, cheaper</option>
+          <option value="claude-haiku-4-5">fastest, cheapest</option>
+        </datalist>
+      </div>
+      <div>
+        <label>Max tokens out</label>
+        <input id="f-max" type="number" value="4096">
+      </div>
+    </div>
+    <div class="row" id="local-row">
+      <div>
+        <label>Server address</label>
+        <input id="f-url" value="http://localhost:11434/v1">
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button id="btn-discover" style="width:100%">🔍 Find models on that server</button>
+      </div>
+    </div>
+    <div class="row" id="key-row" style="display:none">
+      <div style="grid-column: 1 / -1">
+        <label>API key (leave blank to use the ANTHROPIC_API_KEY in your terminal)</label>
+        <input id="f-key" type="password" placeholder="sk-ant-…">
+      </div>
+    </div>
+    <div class="bar">
+      <button class="primary" id="btn-save">Save model</button>
+      <span class="hint" id="discovered"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Agent behavior</h2>
+    <label>When the agent wants to change a file or run a command</label>
+    <div class="seg" id="perm" style="margin-bottom:14px">
+      <button data-mode="ask">Ask me first</button>
+      <button data-mode="auto">Just do it</button>
+      <button data-mode="deny">Read-only</button>
+    </div>
+    <div class="row">
+      <div>
+        <label>Max tool steps per message</label>
+        <input id="f-steps" type="number" min="1" max="200">
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button id="btn-agent" style="width:100%">Save behavior</button>
+      </div>
+    </div>
+    <div class="hint">Config file: <code id="cfgpath">…</code></div>
+  </div>
+
+  <div class="card">
+    <h2>Growing room</h2>
+    <label>Memory summaries (compaction) are written by</label>
+    <div class="row">
+      <div>
+        <select id="f-summarizer"></select>
+      </div>
+      <div>
+        <button id="btn-summarizer" style="width:100%">Save</button>
+      </div>
+    </div>
+    <div class="hint">The main model does this well on the graphics card. Hand
+      it to <code>little</code> when the main model is a paid cloud API —
+      free local housekeeping while the cloud does the thinking.</div>
+    <div class="hint" id="kidmode" style="margin-top:12px">…</div>
+    <label style="margin-top:16px; display:flex; align-items:center; gap:10px; cursor:pointer">
+      <input type="checkbox" id="f-superego" style="width:auto">
+      Superego review — a sealed judge checks her final answers against the
+      evidence before "done" counts
+    </label>
+    <div class="hint">Every verdict is logged to the ledger
+      (<code>~/.forge/ledger.jsonl</code>) — the training data for a future
+      dedicated judge.</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let cfg = null;
+
+// The login token: from the link that opened us, else remembered from last
+// time. Without this every button on this page silently failed 401 when
+// opened from a tablet — the chat worked, the controls didn't.
+let TOKEN = new URLSearchParams(location.search).get('token')
+            || localStorage.getItem('forge-token') || '';
+if (new URLSearchParams(location.search).get('token')) {
+  localStorage.setItem('forge-token', TOKEN);
+  history.replaceState({}, '', location.pathname);
+}
+const q = p => p + (p.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN);
+for (const a of document.querySelectorAll('nav a')) {
+  if (TOKEN) a.href += (a.getAttribute('href').includes('?') ? '&' : '?')
+                       + 'token=' + encodeURIComponent(TOKEN);
+}
+
+function toast(msg, bad) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'show' + (bad ? ' err' : '');
+  setTimeout(() => { t.className = ''; }, 2600);
+}
+
+async function api(path, opts) {
+  const r = await fetch(q(path), opts);
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(d.detail || ('HTTP ' + r.status));
+  }
+  return r.json();
+}
+
+function renderModels() {
+  const box = $('models');
+  box.innerHTML = '';
+  for (const [name, m] of Object.entries(cfg.models)) {
+    const el = document.createElement('div');
+    el.className = 'model' + (name === cfg.active_model ? ' active' : '');
+    const isLocal = m.provider !== 'anthropic';
+    el.innerHTML =
+      '<div class="dot"></div>' +
+      '<div class="grow"><div class="name">' + name + '</div>' +
+      '<div class="meta">' + m.model + (isLocal && m.base_url ? ' · ' + m.base_url : '') + '</div></div>' +
+      '<span class="tag">' + (isLocal ? 'local' : 'cloud') + '</span>';
+    el.onclick = async () => {
+      try {
+        await api('/api/active', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name})
+        });
+        cfg.active_model = name;
+        renderModels(); checkHealth();
+        toast('Now using ' + name);
+      } catch (e) { toast(e.message, true); }
+    };
+    box.appendChild(el);
+  }
+}
+
+function renderPerm() {
+  for (const b of $('perm').children) {
+    b.className = b.dataset.mode === cfg.agent.permission_mode ? 'on' : '';
+  }
+}
+
+async function checkHealth() {
+  try {
+    const h = await api('/api/health');
+    $('health').innerHTML = h.reachable
+      ? '<span style="color:var(--good)">●</span> ' + h.model + ' is ready — ' + h.detail
+      : '<span style="color:var(--bad)">●</span> ' + h.model + ' not reachable — ' + h.detail;
+  } catch (e) { $('health').textContent = 'health check failed'; }
+}
+
+async function checkPower() {
+  try {
+    const p = await api('/api/power');
+    const names = p.running.map(m =>
+      (p.ready || []).includes(m) ? m : m + ' (loading…)');
+    $('power-status').textContent = (names.length
+      ? 'running: ' + names.join(', ')
+      : 'all local models are off') + (p.vram ? ' · ' + p.vram : '');
+  } catch (e) { $('power-status').textContent = ''; }
+}
+
+$('btn-off').onclick = async () => {
+  $('power-status').textContent = 'stopping…';
+  try {
+    const r = await api('/api/power', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: 'off'})
+    });
+    toast(r.stopped.length ? 'Stopped ' + r.stopped.join(', ')
+                           + (r.vram ? ' — ' + r.vram : '')
+                           : 'Nothing was running');
+    checkPower(); checkHealth();
+  } catch (e) { toast(e.message, true); checkPower(); }
+};
+
+$('btn-on').onclick = async () => {
+  try {
+    await api('/api/power', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: 'on', model: 'big'})
+    });
+    toast('Waking her up — about a minute to load');
+    setTimeout(checkPower, 3000);
+  } catch (e) { toast(e.message, true); }
+};
+
+function syncFormKind() {
+  const isAnthropic = $('f-provider').value === 'anthropic';
+  $('local-row').style.display = isAnthropic ? 'none' : '';
+  $('key-row').style.display = isAnthropic ? '' : 'none';
+  // Claude model names are easy to get wrong — offer the current ones.
+  const f = $('f-model');
+  if (isAnthropic) {
+    f.setAttribute('list', 'claude-models');
+    f.placeholder = 'claude-opus-5';
+    if (!f.value) f.value = 'claude-opus-5';
+  } else {
+    f.removeAttribute('list');
+    f.placeholder = 'qwen2.5-coder:14b';
+  }
+}
+
+$('f-provider').onchange = syncFormKind;
+
+$('btn-discover').onclick = async () => {
+  const url = $('f-url').value.replace(/\/v1\/?$/, '');
+  $('discovered').textContent = 'looking…';
+  try {
+    const d = await api('/api/discover?base_url=' + encodeURIComponent(url));
+    if (!d.models.length) { $('discovered').textContent = d.hint; return; }
+    $('f-model').value = d.models[0];
+    $('discovered').textContent = 'found: ' + d.models.slice(0, 6).join(', ') +
+      (d.models.length > 6 ? '…' : '');
+    toast('Found ' + d.models.length + ' model(s)');
+  } catch (e) { $('discovered').textContent = 'nothing there — is the server running?'; }
+};
+
+$('btn-save').onclick = async () => {
+  const name = $('f-name').value.trim();
+  if (!name) { toast('Give it a nickname first', true); return; }
+  const body = {
+    name,
+    provider: $('f-provider').value,
+    model: $('f-model').value.trim(),
+    max_tokens: parseInt($('f-max').value) || 4096,
+    base_url: $('f-provider').value === 'anthropic' ? null : $('f-url').value.trim(),
+    api_key: $('f-key').value || null
+  };
+  try {
+    await api('/api/models', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    cfg = await api('/api/config');
+    renderModels();
+    toast('Saved ' + name);
+    $('f-key').value = '';
+  } catch (e) { toast(e.message, true); }
+};
+
+for (const b of $('perm').children) {
+  b.onclick = async () => {
+    try {
+      await api('/api/agent', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({permission_mode: b.dataset.mode})
+      });
+      cfg.agent.permission_mode = b.dataset.mode;
+      renderPerm();
+      toast('Permissions: ' + b.dataset.mode);
+    } catch (e) { toast(e.message, true); }
+  };
+}
+
+$('btn-agent').onclick = async () => {
+  try {
+    await api('/api/agent', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({max_steps: parseInt($('f-steps').value) || 40})
+    });
+    toast('Saved');
+  } catch (e) { toast(e.message, true); }
+};
+
+function renderGrowing() {
+  const sel = $('f-summarizer');
+  sel.innerHTML = '<option value="">main model (default)</option>';
+  for (const name of Object.keys(cfg.models)) {
+    const o = document.createElement('option');
+    o.value = name; o.textContent = name;
+    if ((cfg.agent.summarizer_model || '') === name) o.selected = true;
+    sel.appendChild(o);
+  }
+  $('f-superego').checked = cfg.agent.superego !== false;
+  $('kidmode').innerHTML = cfg.kid_mode
+    ? '🧒 <b>Kid mode is ON</b> — chat only, commands fenced to the '
+      + 'workspace. Turn off by editing <code>kid_mode</code> in the config '
+      + 'file at the computer.'
+    : '🧒 Kid mode is off. To lend this to a kid safely, set '
+      + '<code>kid_mode: true</code> in the config file at the computer — '
+      + 'chat keeps working, everything else locks.';
+}
+
+$('f-superego').onchange = async () => {
+  try {
+    await api('/api/agent', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({superego: $('f-superego').checked})
+    });
+    toast($('f-superego').checked ? 'Superego on — final answers get reviewed'
+                                  : 'Superego off');
+  } catch (e) { toast(e.message, true); }
+};
+
+$('btn-summarizer').onclick = async () => {
+  try {
+    await api('/api/agent', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({summarizer_model: $('f-summarizer').value})
+    });
+    toast('Saved — memory summaries reassigned');
+  } catch (e) { toast(e.message, true); }
+};
+
+(async function init() {
+  try {
+    cfg = await api('/api/config');
+    renderModels();
+    renderPerm();
+    renderGrowing();
+    $('f-steps').value = cfg.agent.max_steps;
+    $('cfgpath').textContent = cfg.config_path;
+    syncFormKind();
+    checkHealth();
+    checkPower();
+    setInterval(() => { checkHealth(); checkPower(); }, 15000);
+  } catch (e) {
+    toast('Could not load config: ' + e.message, true);
+  }
+})();
+</script>
+</body>
+</html>

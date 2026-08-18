@@ -1,0 +1,328 @@
+# Orchestration recipes — chains of model calls that do real work.
+#
+# These are the starting examples. The visual brick editor reads and writes
+# this same file, so anything built here can be built there and vice versa.
+#
+# Step kinds:
+#   agent    a model with tools — reads, writes, runs things
+#   ask      one model call, no tools — analysis, critique, routing
+#   command  a shell command, no model — the honest referee
+#   loop     repeat inner steps until a check passes
+#   plan     break a big task into a numbered list of small, checkable
+#            sub-steps (see pipeline.py's module docstring for why)
+#   foreach  run inner steps once per sub-step a `plan` produced, {item}
+#            bound to that sub-step's text
+#   gate     one constrained-choice call that can stop the whole
+#            pipeline early — the answer must start with pass_word or
+#            everything after it is skipped
+#
+# {input} is what you typed. {step_name} is any earlier step's output.
+
+pipelines:
+
+  # ---------------------------------------------------------------
+  # Found live 2026-08-11: handed an open task ("find the gap in the
+  # story and fill it"), a 30B model fabricated wholesale — invented
+  # chapters, swapped character genders, never opened the real source
+  # file. Splitting into small verified research steps helped some.
+  # Adding a gate (a separate, constrained proceed/stop judgment
+  # between research and drafting) helped more — it got two honest
+  # "NOT FOUND" answers instead of confident wrong ones on retest.
+  #
+  # STILL NOT RELIABLE for a task this open-ended, on THIS same test:
+  # the gate said "proceed" anyway on research that included at least
+  # one wrong citation, and the draft step went on to fabricate FOUR
+  # scene files, not one — including a scene pairing Logan with the
+  # wrong established character entirely. The gate is the same model
+  # checking its own research; it isn't independent enough to catch a
+  # citation that looks real but points at the wrong passage. Use this
+  # recipe for narrower, single-fact research questions (verified
+  # working there — see the boss-NPC awareness check) and NOT yet for
+  # "find the gap in a 56,000-word book and write the missing scene."
+  # For that, the only pattern that's actually held up today is a
+  # human confirming the exact passage before any drafting starts.
+  # ---------------------------------------------------------------
+  chunk-and-verify:
+    description: Break an open-ended task into small research steps, verify each, gate on real evidence, then draft.
+    steps:
+      - name: findings
+        kind: plan
+        model: qwen30b
+        prompt: |
+          {input}
+
+          Before anything gets written, what needs to be found and
+          confirmed FIRST? Facts to look up, passages to locate,
+          continuity to check. Include a step that specifically checks
+          whether what's being asked for might ALREADY exist somewhere,
+          in full — not just related material, the actual thing itself.
+          Research and verification steps only.
+      - name: research
+        kind: foreach
+        over: findings
+        steps:
+          - name: check
+            kind: agent
+            model: qwen30b
+            prompt: |
+              {item}
+
+              Search for it, and if you find anything relevant, keep
+              reading forward AND backward from that point — a fragment
+              of the right passage is not the same as having found the
+              whole thing, and the answer may continue well past where
+              you first landed. Report only what you actually find in the
+              project's files — quote or cite it precisely (file and
+              line). If you search and it genuinely isn't there, say
+              "NOT FOUND" plainly. This step is research only: do not
+              draft, invent, or propose new content.
+      - name: enough_evidence
+        kind: gate
+        model: qwen30b
+        pass_word: "proceed"
+        choices: ["proceed", "stop"]
+        prompt: |
+          Original request: {input}
+
+          Research findings:
+          {research}
+
+          Answer "proceed" ONLY if the findings above contain specific,
+          quoted, cited evidence — not vague summaries or guesses — that
+          is actually about what the request is asking for, AND the
+          findings do not indicate the requested thing already exists in
+          full elsewhere. Answer "stop" if evidence is thin, uncited,
+          about the wrong thing, contradictory, or if the findings
+          suggest this already exists and doesn't need to be created.
+          Reply with exactly one word.
+      - name: draft
+        kind: agent
+        model: qwen30b
+        prompt: |
+          Original request: {input}
+
+          What was verified while researching it:
+          {research}
+
+          Now do the actual task, using ONLY what's confirmed above for
+          any fact you rely on. If something the task needs was never
+          confirmed, say so plainly instead of filling the gap yourself.
+
+  # ---------------------------------------------------------------
+  # The workhorse. Build it, run the real check, and if the check
+  # fails feed the actual error back and try again. The exit
+  # condition is a command's exit code — not the model's opinion of
+  # its own work, which is exactly the thing a smaller model gets
+  # wrong.
+  # ---------------------------------------------------------------
+  build-until-it-works:
+    description: Build something, then keep fixing until the check command passes.
+    steps:
+      - name: build
+        kind: agent
+        model: qwen30b
+        prompt: |
+          {input}
+
+          Write the code and any tests needed. Work in the current directory.
+      - name: fixloop
+        kind: loop
+        max_rounds: 4
+        until_ok: check
+        steps:
+          - name: check
+            kind: command
+            command: "python3 -m pytest -q 2>&1 | tail -25"
+          - name: fix
+            kind: agent
+            model: qwen30b
+            prompt: |
+              The tests did not pass. Here is the real output:
+
+              {check}
+
+              Fix the cause. Read the failing file first, then make the
+              smallest change that makes the test pass. Do not rewrite
+              working code.
+
+  # ---------------------------------------------------------------
+  # Two models, different jobs: one writes, a second reviews with
+  # fresh eyes, then the first addresses the notes. A reviewer that
+  # didn't write the code catches things the author is blind to,
+  # even when it's the same model behind both roles.
+  # ---------------------------------------------------------------
+  write-and-review:
+    description: One model writes it, another reviews it, the first fixes what's raised.
+    steps:
+      - name: draft
+        kind: agent
+        model: qwen30b
+        prompt: "{input}"
+      - name: review
+        kind: ask
+        model: qwen30b
+        system: |
+          You are a code reviewer. You did not write this code. Be specific
+          and concrete — name files and lines. If the work is genuinely fine,
+          reply with exactly: APPROVED
+        prompt: |
+          Someone was asked to do this:
+
+          {input}
+
+          They reported:
+
+          {draft}
+
+          Look at the actual files in the project and review the work. List
+          real problems only — no style nitpicking, no praise. If it's good,
+          reply APPROVED.
+      - name: address
+        kind: agent
+        model: qwen30b
+        prompt: |
+          A reviewer looked at your work and said:
+
+          {review}
+
+          If that's just APPROVED, reply "nothing to do" and stop. Otherwise
+          fix each real problem raised, then verify by running the code.
+
+  # ---------------------------------------------------------------
+  # Cheap-first routing: the little 1.1B model sits in RAM and only
+  # decides how hard the job is. Easy work stays on the small fast
+  # model; real work goes to the 30B. This is the pattern that makes
+  # a multi-model rig worth having.
+  #
+  # Needs the tiny model running:  ./start-model.sh tiny
+  # ---------------------------------------------------------------
+  route-by-difficulty:
+    description: A small model triages, then sends the job to the right size model.
+    # `choices:` compiles to a llama.cpp grammar, which makes any other answer
+    # literally impossible to generate. Without it a 1.1B model ignores
+    # "answer in one word" and starts writing code instead — measured, not
+    # guessed. Note the honest limit: the grammar fixes the SHAPE of the
+    # answer, not the judgment behind it. A 1.1B still mis-rates hard tasks
+    # as simple; for routing you actually trust, use a 3B+ here.
+    steps:
+      - name: triage
+        kind: ask
+        model: tiny
+        choices: [SIMPLE, COMPLEX]
+        system: |
+          You sort programming tasks by difficulty.
+          SIMPLE: renaming, formatting, one-line edits, reading files.
+          COMPLEX: new logic, multiple files, anything needing design.
+        prompt: "Task: {input}\n\nOne word, SIMPLE or COMPLEX:"
+      - name: work
+        kind: agent
+        model: qwen30b
+        prompt: |
+          {input}
+
+          (A triage model rated this: {triage})
+
+  # ---------------------------------------------------------------
+  # Look before you leap. Understand the codebase first, then act on
+  # what was actually found rather than what the model assumed.
+  # ---------------------------------------------------------------
+  explore-then-change:
+    description: Survey the code first, then make the change with real context.
+    steps:
+      - name: survey
+        kind: agent
+        model: qwen30b
+        max_steps: 12
+        prompt: |
+          Do not change anything yet. Explore this project and report what
+          matters for this task:
+
+          {input}
+
+          List the relevant files and what each does. Be brief.
+      - name: change
+        kind: agent
+        model: qwen30b
+        prompt: |
+          Here is what the project looks like:
+
+          {survey}
+
+          Now do this: {input}
+
+  # ---------------------------------------------------------------
+  # EYES. The loop this replaces: you see something wrong on screen,
+  # translate it into words, the agent works from your translation
+  # and sometimes gets it wrong. Here the vision model looks at the
+  # actual pixels and the coding model works from what's really there.
+  #
+  # Needs:  ./start-model.sh vision
+  # ---------------------------------------------------------------
+  fix-what-you-see:
+    description: Look at a screenshot, work out what's visually wrong, then fix the code.
+    steps:
+      - name: capture
+        kind: command
+        command: "echo ${FORGE_SHOT:-/tmp/forge-screenshot.png}"
+      - name: observe
+        kind: agent
+        model: qwen30b
+        max_steps: 6
+        system: |
+          You inspect images. Use look_at_image on the path given, then report
+          only what you actually saw. Do not speculate about code yet.
+        prompt: |
+          Look at the image at {capture} and describe what is visually wrong
+          or notable, in the context of: {input}
+
+          Be concrete: what's misplaced, mis-coloured, overlapping, cut off,
+          or missing.
+      - name: repair
+        kind: agent
+        model: qwen30b
+        prompt: |
+          Someone looked at the running app and reported this:
+
+          {observe}
+
+          The original complaint was: {input}
+
+          Find the code responsible and fix it. Verify your change.
+
+  # ---------------------------------------------------------------
+  # EARS. Talk at it, it works. Point this at a voice memo and the
+  # spoken task becomes a real task — no typing in the loop at all.
+  #
+  # Needs whisper built:  ~/whisper.cpp
+  # Set FORGE_AUDIO to your recording, or pass the path in your task.
+  # ---------------------------------------------------------------
+  do-what-i-said:
+    description: Transcribe a voice recording, then carry out the spoken instruction.
+    steps:
+      - name: transcribe
+        kind: agent
+        model: qwen30b
+        max_steps: 4
+        system: |
+          Use transcribe_audio on the given file and reply with the
+          transcription only — no commentary, no preamble.
+        prompt: "Transcribe this recording: {input}"
+      - name: carry_out
+        kind: agent
+        model: qwen30b
+        prompt: |
+          The user said this out loud:
+
+          "{transcribe}"
+
+          Do what they asked. If it is ambiguous, do the most obvious
+          reasonable thing and say what you assumed.
+      - name: tell_them
+        kind: agent
+        model: qwen30b
+        max_steps: 3
+        system: You have a say_aloud tool. Keep spoken messages under 20 words.
+        prompt: |
+          Say aloud a one-sentence summary of what was just done:
+
+          {carry_out}

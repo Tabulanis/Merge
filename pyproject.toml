@@ -1,0 +1,39 @@
+[project]
+name = "forge-agent"
+version = "0.1.0"
+description = "A local-first coding agent with a web control panel"
+requires-python = ">=3.10"
+dependencies = [
+  "anthropic>=0.40",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "httpx>=0.27",
+  "rich>=13.0",
+  "pyyaml>=6.0",
+  "sympy>=1.12",
+  "numpy>=1.24",          # physics + data tools
+  "scipy>=1.11",          # complex sim solves: optimize / integrate / linalg / stats
+  "sympy>=1.12",          # symbolic solving
+  "scikit-learn>=1.3",    # pattern-matching / regime clustering
+  "pandas>=2.0",          # data wrangling
+  "networkx>=3.0",        # graph / network models
+  "pillow>=10.0",         # screenshots / vision (ImageGrab)
+  "ddgs>=9.0",            # web_search
+  "beautifulsoup4>=4.12", # fetch_url page-text extraction
+  "piper-tts>=1.6",       # her human voice (pulls onnxruntime)
+  "playwright>=1.60",     # headless browser she drives (also run: playwright install chromium)
+]
+
+[project.scripts]
+forge = "forge.cli:main"
+forge-dash = "forge.server:serve"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["forge*"]
+
+[tool.setuptools.package-data]
+forge = ["web/*"]

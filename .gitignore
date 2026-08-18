@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+models/
+
+# Vendored JS lint/format tools — reproducible via `npm install` in jstools/,
+# no need to commit the 23MB tree.
+node_modules/
+
+# Captured model outputs from the regression battery — runtime artifacts, and
+# the raw belief-probe answers are kept out of the repo by choice. The test
+# itself (subtlety_battery.py) is tracked; its results are not.
+model-tests/results/
