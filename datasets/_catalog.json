@@ -1,0 +1,18 @@
+{
+ "rocket_materials": {
+  "description": "Melting points in Kelvin for rocket-relevant metals",
+  "sources": [
+   "LangHe Industry",
+   "Fractory",
+   "Engineering Toolbox"
+  ],
+  "corroborated": true,
+  "saved": 1786861364.93403,
+  "n": 3,
+  "keys": [
+   "tungsten",
+   "titanium",
+   "aluminum"
+  ]
+ }
+}

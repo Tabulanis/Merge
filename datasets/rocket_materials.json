@@ -1,0 +1,21 @@
+{
+ "data": {
+  "tungsten": {
+   "melting_k": 3695
+  },
+  "titanium": {
+   "melting_k": 1941
+  },
+  "aluminum": {
+   "melting_k": 933
+  }
+ },
+ "sources": [
+  "LangHe Industry",
+  "Fractory",
+  "Engineering Toolbox"
+ ],
+ "corroborated": true,
+ "description": "Melting points in Kelvin for rocket-relevant metals",
+ "saved": 1786861364.93403
+}
