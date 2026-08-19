@@ -18,6 +18,7 @@ kills the link on data it never saw. It finds the SUSPECT, not a conviction.
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 
@@ -107,11 +108,21 @@ def _aligned_returns(names, n=400, required=2):
         raise ValueError(f"only {len(dates)} common days for {names[:required]} — not enough overlap")
     rets = {}
     for nm, s in series.items():
-        if all(d in s for d in dates):
-            lv = np.array([s[d] for d in dates])
-            rets[nm] = np.diff(np.log(np.clip(lv, 1e-9, None)))
-        elif nm not in names[:required]:
+        is_pair = nm in names[:required]
+        have = [d for d in dates if d in s]
+        # a suspect used to be dropped WHOLESALE for one missing holiday (VIX
+        # covered 399/400 and got tossed). Keep any that covers ~90%+ of the
+        # window and forward-fill the handful of gaps; only truly sparse series
+        # (e.g. weekly M2 at ~17%) are too thin to trust and get dropped.
+        if not is_pair and len(have) < max(int(0.9 * len(dates)), 100):
             dropped.append(nm)
+            continue
+        lv, last = [], None
+        for d in dates:
+            if d in s:
+                last = s[d]
+            lv.append(last if last is not None else s[have[0]])
+        rets[nm] = np.diff(np.log(np.clip(np.array(lv, dtype=float), 1e-9, None)))
     return dates, rets, dropped
 
 
@@ -136,7 +147,12 @@ def find_third_party(a: str, b: str, suspects=None, n: int = 400) -> str:
     if _norm(a) == _norm(b):
         return (f"'{a}' and '{b}' are the same thing — an odd couple needs two "
                 "different assets. Pick a real pair.")
-    suspects = [s.strip() for s in (suspects or DEFAULT_SUSPECTS) if _norm(s.strip()) not in (_norm(a), _norm(b))]
+    # a model often hands `suspects` as a string ("VIX" or "VIX,DXY") — iterating
+    # that char-by-char turns it into bogus one-letter suspects. Split it first.
+    if isinstance(suspects, str):
+        suspects = [s for s in re.split(r"[,\s]+", suspects) if s]
+    suspects = [s.strip() for s in (suspects or DEFAULT_SUSPECTS)
+                if s and str(s).strip() and _norm(str(s).strip()) not in (_norm(a), _norm(b))]
     names = [a, b] + suspects
     try:
         dates, rets, dropped = _aligned_returns(names, n)
@@ -186,6 +202,12 @@ def find_third_party(a: str, b: str, suspects=None, n: int = 400) -> str:
             tag = "  ← strong influence"
         lines.append(f"  control for {z:6}: link {base_all:+.2f} → {p_all:+.2f} "
                      f"({pct:+.0f}% of it gone){tag}")
+    if not scored:
+        lines.append("\n→ None of the named suspects could be lined up with enough "
+                     "overlapping data to test (bad names, or no shared history). The "
+                     "link is real, but the lineup came up empty — try other suspects "
+                     "(e.g. SPX, VIX, DXY, US10Y, OIL, M2) and re-run.")
+        return "\n".join(lines)
     top = scored[0]
     if abs(top[2]) < 0.12 and top[1] > 0.05:
         lines.append(f"\n→ Prime suspect: {top[3]}. Once you account for it, {a} and "

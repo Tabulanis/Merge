@@ -63,6 +63,16 @@ NOTES_LIMIT_CHARS = 8000
 # purpose, with a summary, beats forgetting at random.
 MAX_RED_BOUNCES = 3        # times we refuse "done" while the last run failed
 TRACE_EVERY = 20           # steps of one task between "walk it back" taps
+MAX_SAME_TOOL = 10         # per-tool call ceiling in one turn (non-iterative tools)
+# Tools that legitimately loop many times (exploring/editing files, shell build-
+# test cycles, cheap listings/lookups) are exempt from the HARD ceiling — they
+# still get the soft wrap-up nudges. Everything else (analysis/generation:
+# find_third_party, design_part, deduce_meaning, verify_*, run_sim, …) is capped,
+# because a dozen "just one more" calls that each succeed but never converge is
+# how a small local model fills memory and runs a turn out of road unlaunched.
+_ITERATIVE_TOOLS = {"read_file", "write_file", "edit_file", "undo_file",
+                    "list_dir", "search", "run_command", "web_search", "recall",
+                    "list_datasets", "list_sims", "list_parts", "list_xfiles"}
 
 # Every automatic bounce risks the model answering the CHECK instead of the
 # user — seen live: a casual chat turn ended in "Final Answer (Corrected and
@@ -611,6 +621,7 @@ class Agent:
         # sim/dataset/note in a forever-store poisons every future turn.
         self._turn_hiccups = []
         self._call_counts = {}    # successful-call fingerprints -> times this turn
+        self._tool_attempts = {}  # tool NAME -> attempts this turn (per-tool ceiling)
         turn_start = len(self.history) - 1   # index of this turn's user msg
 
         _mode_steps = get_mode(self.active_mode)["max_steps"]
@@ -1313,6 +1324,30 @@ class Agent:
             yield Event(kind="tool_result", tool=call.name, text="repeat blocked")
             return
 
+        # Per-TOOL ceiling, independent of arguments. The exact-repeat guards
+        # above only catch the SAME call; they miss the real local-model rut —
+        # the same tool called a dozen+ times with slightly DIFFERENT args (15
+        # find_third_party sweeps; endless design_part "refinements"), each one
+        # succeeding, never converging, until memory fills and the turn dies
+        # unlaunched. File/shell/listing primitives loop legitimately (exempt);
+        # for everything else, once the budget is spent the tool is closed for
+        # the rest of the turn, forcing a landing on what she already has.
+        if not hasattr(self, "_tool_attempts"):
+            self._tool_attempts = {}
+        self._tool_attempts[call.name] = self._tool_attempts.get(call.name, 0) + 1
+        _same_tool = self._tool_attempts[call.name]
+        if call.name not in _ITERATIVE_TOOLS and _same_tool > MAX_SAME_TOOL:
+            msg = (f"You've called {call.name} {_same_tool - 1} times this turn — "
+                   "that's a loop, not progress, and it's about to run the turn out "
+                   f"of road. {call.name} is now closed for the rest of this turn. "
+                   "Stop iterating and give the user your best answer from the "
+                   "results you already have.")
+            self.history.append({
+                "role": "tool_result", "id": call.id, "content": msg, "is_error": True,
+            })
+            yield Event(kind="tool_result", tool=call.name, text="tool budget spent")
+            return
+
         summary = tool.summarize(call.args) if tool.summarize else call.name
         will_ask = self._needs_ask(tool)
         yield Event(kind="tool_request", tool=call.name, args=call.args,
@@ -1396,6 +1431,15 @@ class Agent:
                            "STOP repeating it. Extract what you need from THIS "
                            "result right now and act on it, or request a narrower "
                            "slice (offset/limit, grep) instead.]")
+            # Soft per-TOOL wrap-up pressure (works alongside the hard ceiling
+            # above): as the same tool piles up across DIFFERENT args, escalating
+            # nudges push her to converge and DELIVER before the hard stop or the
+            # step budget — the perfect-answer-that-never-ships trap.
+            if _same_tool in (5, 8):
+                result += (f"\n\n[WRAP-UP: {call.name} has run {_same_tool} times this "
+                           "turn. If you're iterating to make it perfect, stop now — a "
+                           "good-enough answer delivered beats a perfect one that never "
+                           "ships. Take what you have and give the user your read.]")
         # The forever-store gate: saving into a persistent shelf right after a
         # hiccup is how confident garbage gets a ✓ and poisons the future.
         if call.name in ("build_sim", "build_dataset", "save_note") \
