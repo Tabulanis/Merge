@@ -63,13 +63,18 @@ def implied_prob(p: dict):
 def kelly(p: dict):
     """Growth-optimal bet size. win_prob + net_odds (b, payoff-to-1) or decimal_odds."""
     win, = _need(p, "win_prob")
+    if not (0 <= win <= 1):
+        raise ValueError("win_prob is a probability — it must be between 0 and 1.")
     if p.get("decimal_odds") is not None:
         b = float(p["decimal_odds"]) - 1
     elif p.get("net_odds") is not None:
         b = float(p["net_odds"])
     else:
         raise KeyError("decimal_odds or net_odds (b = payoff-to-1)")
-    f = (win * b - (1 - win)) / b if b else 0
+    if b <= 0:
+        raise ValueError("odds must pay more than the stake — decimal_odds > 1 "
+                         "(or net_odds > 0). A bet that can't pay you has no Kelly size.")
+    f = (win * b - (1 - win)) / b
     rows = [("full Kelly fraction", f, "pct"), ("half Kelly (safer)", f / 2, "pct")]
     if f <= 0:
         rows.append(("_note", "Kelly ≤ 0 → no edge, bet nothing. A positive f assumes your win_prob is honest; most aren't.", "text"))
@@ -149,6 +154,10 @@ def risk_of_ruin(p: dict):
     """Gambler's-ruin probability for even-money bets: win_prob and bankroll in
     units (bankroll / bet size)."""
     win, units = _need(p, "win_prob", "bankroll_units")
+    if not (0 <= win <= 1):
+        raise ValueError("win_prob is a probability — it must be between 0 and 1.")
+    if units <= 0:
+        raise ValueError("bankroll_units (bankroll ÷ bet size) must be positive.")
     if win <= 0.5:
         return [("risk of ruin", 1.0, "pct"),
                 ("_note", "no edge (≤50% at even money) → ruin is eventually CERTAIN. Don't.", "text")]
@@ -169,6 +178,8 @@ def position(p: dict):
                           "just dresses noise up as graded conviction — worse than useless. Prove "
                           "it (walk_forward) first.", "text")]
     win, = _need(p, "win_prob")
+    if not (0 <= win <= 1):
+        raise ValueError("win_prob is a probability — it must be between 0 and 1.")
     if p.get("decimal_odds") is not None:
         b = float(p["decimal_odds"]) - 1
     else:

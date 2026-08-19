@@ -12,6 +12,7 @@ typing a name exactly right.
 
 from __future__ import annotations
 
+import time
 import asyncio
 import json
 import queue
@@ -423,9 +424,9 @@ def serve_file(path: str):
 
 @app.post("/api/upload", dependencies=[Depends(require_token)])
 async def upload_image(request: Request, session: str = ""):
-    """Save a photo the user snapped (raw image bytes in the body, like
+    """Save a photo or sound the user attached (raw bytes in the body, like
     /api/listen) into the session's workspace/uploads, and return its path so
-    the chat can send it to her for look_at_image."""
+    the chat can send it to her (look_at_image for photos, see_sound for audio)."""
     sess = STORE.get(session) if session else None
     if not sess and session:
         STORE.rescan()
@@ -434,16 +435,28 @@ async def upload_image(request: Request, session: str = ""):
         sess = STORE.get_or_create(None, "")   # a photo can start a fresh chat
     body = await request.body()
     if not body or len(body) < 100:
-        raise HTTPException(400, "No image received")
+        raise HTTPException(400, "No file received")
     if len(body) > 20_000_000:
-        raise HTTPException(413, "Image too large")
+        raise HTTPException(413, "File too large")
     ctype = (request.headers.get("content-type") or "").lower()
-    ext = ".png" if "png" in ctype else ".webp" if "webp" in ctype \
-        else ".gif" if "gif" in ctype else ".jpg"
-    import time as _t
+    is_audio = ctype.startswith("audio/")
+    AUDIO_EXT = {
+        "audio/mpeg": ".mp3",
+        "audio/wav": ".wav", "audio/x-wav": ".wav",
+        "audio/mp4": ".m4a", "audio/x-m4a": ".m4a",
+        "audio/ogg": ".ogg",
+        "audio/flac": ".flac",
+        "audio/webm": ".webm",
+    }
+    if is_audio:
+        ext = AUDIO_EXT.get(ctype, ".bin")
+    else:
+        ext = ".png" if "png" in ctype else ".webp" if "webp" in ctype \
+            else ".gif" if "gif" in ctype else ".jpg"
     updir = Path(sess.workspace) / "uploads"
     updir.mkdir(parents=True, exist_ok=True)
-    path = updir / f"photo-{int(_t.time())}{ext}"
+    prefix = "sound-" if is_audio else "photo-"
+    path = updir / f"{prefix}{int(time.time())}{ext}"
     path.write_bytes(body)
     return {"path": str(path), "session": sess.id}
 

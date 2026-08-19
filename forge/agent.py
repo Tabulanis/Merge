@@ -177,6 +177,61 @@ offset/limit; if a pasted block was trimmed to fit, say so and ask for the rest
 in chunks. A note that an input was "trimmed to what fits" means exactly that —
 you're seeing the front of it, not the whole thing.
 
+Law — you can explain it, but you are not anyone's lawyer. Cite nothing you
+haven't verified (verify_case, verify_statute, find_regulation) — an invented
+case or code section is the one legal failure that ruins people. Explaining
+what a law says, what elements a crime has, how a doctrine works: good, that's
+information. But the moment someone asks about THEIR OWN exposure — "did I
+commit a crime", "what do I tell the investigators/police", "will I be
+liable", "should I sign this" — stop. Do not assess it, and do not gather
+their facts first: a stranger's account of what they did is not privileged,
+and encouraging them to type it out can hurt them. Say plainly that they need
+a licensed lawyer in their jurisdiction now, that they should not discuss the
+facts with investigators (or anyone but that lawyer) first, and that public
+defenders exist if money is the obstacle. Then offer only what's safe: what
+the law generally says, what the process looks like, how to find counsel.
+Same for financial and medical: general information yes, personal advice no.
+
+Verify BEFORE you characterize — this is the reflex, and reassurance is the
+trap. "That's probably not a crime", "you're likely fine", "that's clearly
+illegal", "that sounds unenforceable" are all legal conclusions, and a
+comforting guess is still a guess. Do not offer ANY read on whether something
+is legal, a crime, a big deal, or minor until you have pulled the actual law
+with a tool or source. A scared person hears "probably fine" and relaxes when
+they should be calling a lawyer — that is the exact way a wrong reassurance
+does damage. Order is fixed: name what you don't yet know (usually the
+jurisdiction), verify the governing law, THEN speak — hedged, sourced, and
+pointed at counsel. And know your tools' reach: verify_statute and
+find_regulation are US FEDERAL only (US Code, CFR); state and local law
+(most crimes, traffic, landlord/tenant, family) they cannot verify — say so
+and confirm the specific state's statute from a real source before quoting it,
+never from memory.
+
+Medicine — you are not a doctor, and here the same reflex is life-and-death.
+Your job is FACTS and COMMUNICATION, never diagnosis or treatment. Two things
+come before anything else. (1) EMERGENCIES: if what they describe could be one
+— chest pain or pressure, trouble breathing, stroke signs (face droop, arm
+weakness, speech trouble), severe bleeding, a reaction closing the throat,
+thoughts of suicide or self-harm, a baby or child who is very ill — stop and
+tell them to call 911 (or their local emergency number) NOW, or reach the 988
+Suicide & Crisis Lifeline for self-harm. Do not triage it, do not talk them
+out of going — and do not give your OWN first-aid dose or treatment step (like
+"chew an aspirin, 325 mg"): tell them to call 911 and follow the DISPATCHER's
+live instructions, because the dispatcher can account for allergies, blood
+thinners, and what's actually happening in a way you cannot. (2) NEVER state a drug, dose, interaction, symptom cause, or
+medical fact you haven't verified with a tool (verify_drug, find_condition,
+explain_plain) — an invented drug or a confident wrong "that's nothing" is how
+this hurts people. And never diagnose or predict: "you have X", "that's
+probably just Y", "you don't need a doctor" are all off-limits — you give the
+precise WORDS for what they describe (find_condition) so their real doctor
+can't misread them, and plain-language explanations of terms (explain_plain),
+but which condition they actually have, and what to do about it, is the
+clinician's call. Personal questions ("should I take this", "is this
+dangerous for me", "do I have...") route to their doctor or pharmacist plus
+the verified general facts. US-only sources; say so for anything outside that.
+Same shape for anything a professional owns — general information yes,
+personal advice no.
+
 Know when you're hiccuping. If this turn hit tool failures, aborted calls, or
 memory trims, treat your own picture of the world as SUSPECT — re-verify inputs
 before persisting anything durable (a sim, a dataset, a saved note). A wrong
@@ -506,7 +561,8 @@ class Agent:
         by token as it's written (the chat UI uses this). Only the reply is
         streamed; the superego and summarizer stay one-shot.
         """
-        self.history.append({"role": "user", "content": user_message})
+        _turn_user_msg = {"role": "user", "content": user_message}
+        self.history.append(_turn_user_msg)
 
         # Resolve the style for this turn. "auto" reads the message's intent and
         # picks — which also means asking in chat ("be more careful", "get
@@ -546,6 +602,7 @@ class Agent:
         force_compacted = False
         superego_bounced = False
         grounding_nudged = False
+        _empty_retried = False
         _tidy_noted = False       # near-cap notes: once per turn, not per step
         _trim_noted = False
         # Hiccup ledger: everything that degraded THIS turn (failed tools,
@@ -553,6 +610,7 @@ class Agent:
         # a wobbly turn gets flagged at the moment of saving, because a wrong
         # sim/dataset/note in a forever-store poisons every future turn.
         self._turn_hiccups = []
+        self._call_counts = {}    # successful-call fingerprints -> times this turn
         turn_start = len(self.history) - 1   # index of this turn's user msg
 
         _mode_steps = get_mode(self.active_mode)["max_steps"]
@@ -629,6 +687,12 @@ class Agent:
                 yield Event(kind="note",
                             text="Tidying up my memory to make room — one moment…")
             note = self._maybe_compact()
+            if note:   # compaction shrank history — re-anchor turn_start to the
+                # current turn's user message so the superego/grounding digest
+                # still sees THIS turn's request and evidence (found live: a
+                # mid-turn compaction handed the sealed reviewer blank evidence).
+                turn_start = next((i for i, m in enumerate(self.history)
+                                   if m is _turn_user_msg), turn_start)
             if note:
                 if note.startswith("One long task"):
                     if not _trim_noted:
@@ -674,6 +738,9 @@ class Agent:
                         force_compacted = True
                         note = self._maybe_compact(force=True)
                         if note:
+                            turn_start = next((i for i, m in enumerate(self.history)
+                                               if m is _turn_user_msg), turn_start)
+                        if note:
                             yield Event(kind="note", text=note + " (emergency)")
                             continue
                 # A lone 5xx is usually a transient server stumble (seen
@@ -699,12 +766,38 @@ class Agent:
                 yield Event(kind="text", text=reply.text, usage=reply.usage)
 
             if not reply.wants_tools:
+                if not (reply.text or "").strip():
+                    # An empty reply with no tool calls is a stall — and
+                    # appending it is POISON: the model pattern-matches its own
+                    # history, so one empty assistant turn breeds another
+                    # forever (found live 2026-08-18: a session fell into an
+                    # empty-reply attractor and every later turn died
+                    # instantly, including brand-new questions). Never let an
+                    # empty into history. Retry once; then fail loudly.
+                    if not _empty_retried:
+                        _empty_retried = True
+                        yield Event(kind="note",
+                                    text="The model came back empty — nudging it once.")
+                        continue
+                    yield Event(kind="error",
+                                text="The model returned an empty reply twice — "
+                                     "ending this turn cleanly. Rephrasing usually "
+                                     "fixes it; a fresh chat definitely does.")
+                    return
                 self.history.append({"role": "assistant", "content": reply.text or ""})
                 # The lie the system prompt forbids hardest: claiming work
                 # when no tool ever ran this message. One bounce back, so a
                 # model describing genuinely old work can just say so.
-                if (not self._tools_ran and not nudged
-                        and _CLAIMS_ACTION.search(reply.text or "")):
+                # Only a work CLAIM matters — one that names a file or a
+                # concrete work object. Figurative chat ("I made a mistake",
+                # "I ran this morning") mentions no artifact and is left alone.
+                _txt = reply.text or ""
+                _claims_work = (_CLAIMS_ACTION.search(_txt) and
+                                (_FILE_MENTION.search(_txt) or re.search(
+                                    r"\b(the |a |your )?(command|script|test|tests|"
+                                    r"directory|folder|function|module|class|the code|"
+                                    r"the file|the files)\b", _txt, re.I)))
+                if (not self._tools_ran and not nudged and _claims_work):
                     nudged = True
                     self.history.append({
                         "role": "user", "synthetic": True,
@@ -945,8 +1038,12 @@ class Agent:
             # The reason is everything AFTER the bounce keyword. (The old
             # split-on-dash extraction ate everything before any hyphen the
             # reason happened to contain, yielding garbage like "sentence".)
-            idx = low.find("bounce") + len("bounce")
-            reason = text[idx:].lstrip(" \t:—–-.").strip()[:200]
+            # Anchor to the VERDICT line so prose containing the word "bounce"
+            # before it cannot hijack the split (and leak the internal token).
+            vpos = low.rfind("verdict:")
+            tail = text[vpos:] if vpos >= 0 else text
+            bidx = tail.lower().find("bounce") + len("bounce")
+            reason = tail[bidx:].lstrip(" \t:—–-.").strip()[:200]
             # A bounce is only actionable with a real, readable reason. A
             # fragment or nothing means the judge glitched — fail OPEN, same
             # as an unreachable judge: work passes, gibberish never bounces.
@@ -1283,6 +1380,22 @@ class Agent:
             self._turn_hiccups.append(f"{call.name} failed")
         elif result.startswith("[stopped by user"):
             self._turn_hiccups.append(f"{call.name} abandoned mid-run")
+        else:
+            # The read-loop rut: memory trims erase a big result, the model
+            # re-reads it, the re-read triggers another trim — a spiral that
+            # burned 25 straight read_file calls (found live 2026-08-18).
+            # Repeating the SAME successful call is legal twice; the third
+            # time, the result itself says stop.
+            if not hasattr(self, "_call_counts"):
+                self._call_counts = {}
+            n = self._call_counts[fingerprint] = self._call_counts.get(fingerprint, 0) + 1
+            if n >= 3:
+                result += (f"\n\n[LOOP WARNING: this is the {n}th time this turn "
+                           "you've made this exact call — memory trimming keeps "
+                           "erasing the result and re-reading re-triggers the trim. "
+                           "STOP repeating it. Extract what you need from THIS "
+                           "result right now and act on it, or request a narrower "
+                           "slice (offset/limit, grep) instead.]")
         # The forever-store gate: saving into a persistent shelf right after a
         # hiccup is how confident garbage gets a ✓ and poisons the future.
         if call.name in ("build_sim", "build_dataset", "save_note") \

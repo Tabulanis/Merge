@@ -145,12 +145,14 @@ def run(pair: str = "XBTUSD", horizon: int = 5, min_n: int = 25,
              f"  REAL survivors: {len(real)}  ({n_single} single, {len(real)-n_single} cross-product)",
              f"  survivors on PURE LUCK (shuffled data, avg of {perms} runs): {null_avg:.1f}",
              f"  VERDICT: " + (
-                 f"real ({len(real)}) ≤ chance ({null_avg:.1f}) → it's ALL NOISE. The wide search "
-                 f"found nothing luck wouldn't. This is the honest, near-universal result."
-                 if len(real) <= null_avg * 1.3 else
-                 f"real ({len(real)}) exceeds chance ({null_avg:.1f}) — a whiff worth a HARDER look "
-                 f"(more windows, formal correction). Not proof, just not dismissed yet.")]
-    if real and len(real) > null_avg * 1.3:
+                 f"real ({len(real)}) is within luck's spread of chance ({null_avg:.1f} ± "
+                 f"{(null_avg**0.5):.1f}) → it's NOISE. The wide search found nothing luck "
+                 f"wouldn't. This is the honest, near-universal result."
+                 if len(real) <= null_avg + 2.5 * (max(null_avg, 1) ** 0.5) else
+                 f"real ({len(real)}) is above chance ({null_avg:.1f}) by more than luck's usual "
+                 f"spread — still likely a multiple-testing artifact across this many combos, but "
+                 f"not fully dismissed. Re-run on other windows before believing it.")]
+    if real and len(real) > null_avg + 2.5 * (max(null_avg, 1) ** 0.5):
         lines.append("  strongest surviving combos (still suspects, not conclusions):")
         for lbl, e in sorted(real, key=lambda x: -abs(x[1]))[:5]:
             lines.append(f"    {lbl}   ({e*100:+.1f}% OOS)")

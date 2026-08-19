@@ -82,7 +82,9 @@ Native vision (she looks at screenshots, photos, her own drawings), local
 image generation, server-side natural voice (same voice on every device),
 hands-free voice chat with silence detection, web search + page reading, and
 a warm headless browser she drives herself — build a page, open it, read the
-console errors, fix her own code.
+console errors, fix her own code. She can even *see sound*: turn a clip or a
+call into a visual sound-portrait (spectrogram + harmonics) she reads with her
+eyes.
 
 ### 🛬 Long-task landing gear
 Runaway protection that *delivers* instead of dying: a step-budget warning
@@ -98,7 +100,32 @@ scanner that re-runs its whole search on *shuffled* data to measure how much
 "signal" pure luck produces. It mostly says NO. That's the feature — it was
 built watching beautiful backtests die honestly, including one where the
 literal phase of the moon "predicted" Bitcoin three separate times. No live
-trading, no exchange keys — by design, forever.
+trading, no exchange keys — by design, forever. Plus an *X-Files* hunt: given
+two markets that move together, it goes looking for the hidden third party
+driving both — and reports a statistical suspect, never a proof of cause.
+
+### ⚖️ 🩺 Grounded desks: law and medicine (verify, or say NOT FOUND)
+Legal and medical lookups wired to authoritative sources — US court, statute,
+and regulation databases; the National Library of Medicine's drug and
+condition terminologies — and held to the same rule as everything else: a case,
+statute, drug, or condition that doesn't verify comes back **NOT FOUND**, never
+invented. They translate between plain words and the exact term a lawyer or
+doctor can't misread, and they refuse to diagnose, dose, or give legal advice.
+A false "VERIFIED" is the one thing they cannot emit; emergencies get pointed
+at 911.
+
+### 🐾 Cornering meaning by elimination (the deduction pad)
+The most honest kind of ambition. First, tools that look for *structure* in
+animal calls — clustering a recording into a repertoire and null-testing
+whether the sequence is more than random. Then a **deduction pad** that plays
+Clue with what a call might mean, and never once claims to translate it. It
+holds a blob of candidate *phrases* ("ground predator — get up / bolt", "food
+here — come eat") and rules out the ones the call fires *without*, chiseling a
+coarse cluster down toward a single phrase as the evidence sharpens. And it
+asks the prior question first — *is this even a signal, or just noise?* — by
+testing the call against a shuffle null, so one that can't beat chance stays a
+blob no matter how tidy its cues look. No signal, no meaning; it eliminates, it
+never decodes.
 
 ---
 
@@ -134,12 +161,15 @@ but the harness is model-agnostic and degrades gracefully.
 |---|---|
 | `forge/agent.py` | the loop, the honesty harness, memory compaction, landing gear |
 | `forge/providers.py` | OpenAI-compatible + Anthropic backends, streaming, tool calls |
-| `forge/tools.py` | the toolbelt (~40 tools) — files, shell, web, sims, browser, senses |
+| `forge/tools.py` | the toolbelt (~60 tools) — files, shell, web, sims, browser, senses |
 | `forge/server.py` | FastAPI dashboard: chat, SSE streaming, sessions, voice, uploads |
 | `forge/sims.py` / `datasets.py` | her self-built instruments + validation/corroboration gates |
 | `forge/recall.py` / `embed.py` | three-speed memory, the librarian, associative retrieval |
 | `forge/modes.py` | speed styles, Teach, privacy modes, auto-routing |
-| `forge/paper_market.py` &c. | the honest quant lab |
+| `forge/paper_market.py` / `xfiles.py` &c. | the honest quant lab + the third-party hunt |
+| `forge/law.py` / `medical.py` | grounded legal & medical desks — verify, or NOT FOUND |
+| `forge/bioacoustics.py` / `doolittle.py` | animal-call structure + the deduction pad |
+| `forge/audio_nerve.py` | sound → a visual "sound portrait" she can see |
 | `model-tests/` | the standing regression battery (sycophancy, false premises, neutrality) |
 
 ## Philosophy, in four lines

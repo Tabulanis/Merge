@@ -50,13 +50,18 @@ def main():
     st = getattr(m, "SELFTEST", None)
     if isinstance(st, dict) and st.get("expect"):
         got = m.run(st.get("params", {}))
-        tol = float(st.get("tol", 0.05))
+        tol = min(float(st.get("tol", 0.005)), 0.1)   # tight default; hard cap so a
+        #                                              huge tol can't rubber-stamp a wrong sim
         ok, detail = True, {}
         for k, v in st["expect"].items():
             g = (got or {}).get(k)
             detail[k] = {"expect": v, "got": g}
             try:
-                if abs(float(g) - float(v)) > abs(float(v)) * tol + 1e-9:
+                import math
+                fg, fv = float(g), float(v)
+                if not (math.isfinite(fg) and math.isfinite(fv)):
+                    ok = False          # NaN/inf never counts as a match
+                elif abs(fg - fv) > abs(fv) * tol + 1e-9:
                     ok = False
             except Exception:
                 ok = ok and (g == v)

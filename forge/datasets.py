@@ -55,6 +55,16 @@ def _norm_sources(sources) -> list[str]:
     return out
 
 
+def _root_domain(s: str) -> str:
+    """The registrable-ish root of a source, so wikipedia.org/a and
+    en.wikipedia.org/b count as ONE source, not two."""
+    import re as _re
+    m = _re.search(r"([a-z0-9-]+\.[a-z]{2,})(?:[/?#]|$)", s.lower())
+    if m:
+        return m.group(1)
+    return s.strip().lower()
+
+
 def save_dataset(name: str, data, sources, description: str = "") -> str:
     name = _safe_name(name)
     if not name:
@@ -67,8 +77,12 @@ def save_dataset(name: str, data, sources, description: str = "") -> str:
         json.dumps(data)
     except Exception as e:
         return f"Error: data isn't JSON-serializable ({e}). Pass a plain object/list of values."
-    # One touchstone isn't fact. Two or more INDEPENDENT sources = corroborated.
-    corroborated = len(srcs) >= 2
+    # One touchstone isn't fact. Corroborated needs two sources from DIFFERENT
+    # roots — two links off the same site, or two look-alike strings, are one
+    # voice, not two (found live: 'wikipedia.org/a' + 'en.wikipedia.org/b' and
+    # a pair of invented .blog names both passed as corroborated).
+    roots = {_root_domain(s) for s in srcs}
+    corroborated = len(roots) >= 2
     DATASETS_DIR.mkdir(parents=True, exist_ok=True)
     rec = {"data": data, "sources": srcs, "corroborated": corroborated,
            "description": str(description or "").strip(), "saved": time.time()}

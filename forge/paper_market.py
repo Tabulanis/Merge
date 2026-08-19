@@ -171,7 +171,10 @@ def run(pair: str = "XBTUSD", interval: int = 60, strategy: str = "sma_cross",
     above_random = r["return"] > rnd
     verdict = ("NO EDGE — " + ("it even lost to just holding. " if not beat_hold else "")
                + ("and it's not above random. " if not above_random else "")
-               ).strip() or "beats buy-and-hold AND random on this window — worth a longer, honest look (one window isn't proof)."
+               ).strip() or ("cleared both benchmarks on THIS one window — but a strategy "
+                              "clears both on a single window roughly HALF the time by pure luck, "
+                              "so this means 'not yet dismissed', NOT 'promising'. Only many "
+                              "windows and out-of-sample survival would make it interesting.")
     return (
         f"[paper_market · {strategy} on {pair}, real data]\n"
         f"  window: ~{span_hrs:.0f} hours ({len(closes)} candles), ${start_cash:,.0f} start, fees/slippage ON\n"

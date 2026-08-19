@@ -217,6 +217,9 @@ def dilution(p: dict):
 def growth(p: dict):
     """Project a value forward at a per-period growth rate."""
     start, rate, periods = _need(p, "start", "rate", "periods")
+    if (1 + rate) < 0 and float(periods) != int(periods):
+        raise ValueError("a growth rate below -100% over a fractional number of "
+                         "periods isn't a real value.")
     end = start * (1 + rate) ** periods
     return [
         ("start", start, "num"),
@@ -230,8 +233,9 @@ def growth(p: dict):
 def cagr(p: dict):
     """Compound annual (or per-period) growth rate from start, end, periods."""
     start, end, periods = _need(p, "start", "end", "periods")
-    if start <= 0 or periods <= 0:
-        raise ValueError("start and periods must be positive.")
+    if start <= 0 or end <= 0 or periods <= 0:
+        raise ValueError("start, end, and periods must all be positive — a "
+                         "growth rate through zero or negative isn't a real number.")
     rate = (end / start) ** (1 / periods) - 1
     return [("CAGR / period", rate, "pct"),
             ("_note", "the smooth per-period rate that turns start into end over the periods given.", "text")]

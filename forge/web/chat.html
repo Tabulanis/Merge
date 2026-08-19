@@ -283,6 +283,8 @@
   <canvas id="wave" title="Listening…"></canvas>
   <button id="cam" style="display:none" title="Take a photo and send it to her">📷</button>
   <input id="camInput" type="file" accept="image/*" capture="environment" style="display:none">
+  <button id="sound" style="display:none" title="Send her a sound to listen to">🎵</button>
+  <input id="soundInput" type="file" accept="audio/*" style="display:none">
   <button id="mic" style="display:none" title="Tap, speak, tap again">🎤</button>
   <button id="send">↑</button>
 </footer>
@@ -837,7 +839,7 @@ if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
 // ---- camera-send: snap a photo and send it to her for context ----------
 // On a phone the capture attribute opens the camera directly; on desktop it's
 // a file picker. Most useful in AR — point at something and send it to her.
-function showCamButton() { $('cam').style.display = ''; }
+function showCamButton() { $('cam').style.display = ''; if ($('sound')) $('sound').style.display = ''; }
 if (matchMedia('(pointer: coarse)').matches) showCamButton();   // phones/tablets
 $('cam').onclick = () => $('camInput').click();
 $('camInput').onchange = async () => {
@@ -868,6 +870,39 @@ $('camInput').onchange = async () => {
     el('err', 'Could not send the photo: ' + err.message);
   }
   $('cam').textContent = '📷';
+};
+
+// Same move as the camera, for sound: pick an audio file, upload the bytes,
+// and send herself a message she answers by calling see_sound on the path.
+$('sound').onclick = () => $('soundInput').click();
+$('soundInput').onchange = async () => {
+  const file = $('soundInput').files[0];
+  $('soundInput').value = '';        // let the same file be picked again
+  if (!file) return;
+  $('sound').textContent = '⏳';
+  try {
+    const buf = await file.arrayBuffer();
+    const r = await fetch(q('/api/upload?session=' + encodeURIComponent(SESSION || '')),
+      { method: 'POST', headers: {'Content-Type': file.type || 'application/octet-stream'}, body: buf });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (d.path) {
+      if (d.session && d.session !== SESSION) {   // a sound can start a fresh chat
+        SESSION = d.session;
+        localStorage.setItem('forge-session', SESSION);
+        connect();
+      }
+      const caption = $('box').value.trim();
+      $('box').value = '';
+      $('box').style.height = 'auto';
+      const msg = (caption ? caption + '\n\n' : "Here's a sound — listen to it.\n\n")
+                  + 'Audio: ' + d.path;
+      if (working) queueMessage(msg); else { clearWelcome(); dispatch(msg); }
+    }
+  } catch (err) {
+    el('err', 'Could not send the sound: ' + err.message);
+  }
+  $('sound').textContent = '🎵';
 };
 
 // ---- hands-free voice chat: talk, she answers aloud, repeat -------------

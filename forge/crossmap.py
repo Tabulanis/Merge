@@ -69,7 +69,7 @@ def _leadlag(resid, lag=1):
     return infl
 
 
-def run(lag: int = 1, min_edge: float = 0.12, top: int = 10) -> str:
+def run(lag: int = 1, min_edge: float = 0.18, top: int = 10) -> str:
     names, rets = _returns_matrix(UNIVERSE)
     short = [_SHORT.get(p, p) for p in names]
     resid, pc1_var = _residuals(rets)
@@ -100,7 +100,9 @@ def run(lag: int = 1, min_edge: float = 0.12, top: int = 10) -> str:
              f"  COUPLING: the common market mode (PC1) explains {pc1_var*100:.0f}% of ALL the "
              f"movement — that's how 'not uncoupled' they are; almost everything is BTC-beta.",
              f"  (everything below is on the RESIDUALS — moves AFTER the common one is removed)",
-             f"  --- persistent directed edges (held on train AND held-out test) ---"]
+             f"  --- directed edges that held on train AND held-out test ---",
+             f"  (caveat: across this many pairs a few can persist by CHANCE — treat any "
+             f"single edge as a suspect, not a finding, until it repeats on more data)"]
     if not edges:
         lines.append("  NONE survived out-of-sample. That's the honest, common result: the "
                      "residual lead-lag 'patterns' were noise — they didn't repeat on unseen data.")

@@ -29,7 +29,7 @@ from typing import Callable
 
 import httpx
 
-from . import (browser, business, datasets, frameworks, identity, markets,
+from . import (audio_nerve, bioacoustics, browser, business, datasets, doolittle, medical, xfiles, frameworks, identity, law, markets,
                market_regime, crossmap, news, paper_market, scanner, sims, walkforward)
 from .codetools import syntax_check
 from .config import load_config
@@ -1075,6 +1075,282 @@ def build_tools(ws: Workspace, fenced: bool = False) -> list[Tool]:
             run=run_compute,
             needs_permission=True,
             summarize=lambda a: f"compute: {a.get('code', '')[:100]}",
+        ),
+        Tool(
+            name="verify_case",
+            description="Verify a court case EXISTS before you cite it. Searches the "
+                        "CourtListener/Free Law Project US case database. Returns the real "
+                        "case name, citation, court, filing date, and URL on a hit, or a "
+                        "blunt NOT FOUND if nothing matches. RULES: verify EVERY case "
+                        "before citing it; NEVER cite a case you have not verified this "
+                        "way, because invented cases are how models fail at law; this is "
+                        "legal INFORMATION, not legal advice, and there is no "
+                        "attorney-client relationship; jurisdiction matters and law "
+                        "changes, so anything time-sensitive must be re-checked fresh; "
+                        "coverage is US only, so for foreign or international law say "
+                        "plainly that this check does not reach it and verify with a "
+                        "local source instead of faking confidence.",
+            parameters={
+                "type": "object",
+                "properties": {"query": {"type": "string",
+                                      "description": "Case name or citation to verify"}},
+                "required": ["query"],
+            },
+            run=law.verify_case,
+        ),
+        Tool(
+            name="find_cases",
+            description="Find real US court cases on a topic via the "
+                        "CourtListener/Free Law Project database. Returns real hits with "
+                        "citations and URLs. Same rules as verify_case: cite ONLY what "
+                        "this returns; never cite an unverified case; legal "
+                        "INFORMATION, not advice, no attorney-client relationship; US "
+                        "coverage only, so foreign or international law must be checked "
+                        "against a local source, stated plainly, never faked.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string"},
+                    "limit": {"type": "integer",
+                              "description": "How many results (default 5)"},
+                },
+                "required": ["topic"],
+            },
+            run=law.find_cases,
+        ),
+        Tool(
+            name="verify_statute",
+            description="Verify a US Code statute EXISTS before you cite it. Searches "
+                        "Cornell LII (uscode) and returns the REAL section name and the "
+                        "LII URL on a hit, or a blunt NOT FOUND if the title/section does "
+                        "not exist. Covers both CIVIL branches (contracts/torts/property/"
+                        "procedure) and CRIMINAL penal statutes (e.g. title 18). RULES: "
+                        "verify EVERY statute before citing it; NEVER state a statute or "
+                        "its elements that you have not verified this way, because "
+                        "invented sections are how models fail at law; this is legal "
+                        "INFORMATION, not legal advice, and there is no attorney-client "
+                        "relationship; state law varies HARD by state and federal rules "
+                        "differ from state rules, so always name the jurisdiction or say "
+                        "you don't know it; law changes, so anything time-sensitive must "
+                        "be re-checked fresh; US only, so for foreign law say plainly "
+                        "this check does not reach it and verify with a local source; "
+                        "and for anything real, get a licensed professional in that "
+                        "jurisdiction.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string",
+                              "description": "US Code title, e.g. 18 (criminal), 42"},
+                    "section": {"type": "string",
+                                "description": "Section number within the title"},
+                },
+                "required": ["title", "section"],
+            },
+            run=law.verify_statute,
+        ),
+        Tool(
+            name="find_regulation",
+            description="Verify a US federal regulation EXISTS before you cite it. "
+                        "Searches the eCFR (SEC 17 CFR, banking 12 CFR, etc.) and "
+                        "returns real hits with their title/part/section, a citation "
+                        "string like \"17 CFR 229.408\", and the eCFR URL. This is "
+                        "the FINANCIAL-branch guard: securities/tax/banking rules change "
+                        "constantly, and \"the regulation says X\" needs the actual "
+                        "reg cited - never state one you have not verified this way. "
+                        "Ties to the trading rule already in place: no investment advice "
+                        "ever. RULES: this is legal INFORMATION, not advice, no "
+                        "attorney-client relationship; US only; rules change, so "
+                        "anything time-sensitive must be re-checked fresh; and for "
+                        "anything real, get a licensed professional in that "
+                        "jurisdiction.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string",
+                              "description": "Terms to search for, e.g. \"insider "
+                                             "trading\""},
+                    "limit": {"type": "integer",
+                              "description": "How many results (default 5)"},
+                },
+                "required": ["query"],
+            },
+            run=law.find_regulation,
+        ),
+        Tool(
+            name="verify_drug",
+            description="Confirm a MEDICATION is real and give its precise names, "
+                        "so a patient can tell the doctor/pharmacist the exact drug "
+                        "and not be misread. Checks NLM RxNorm; returns the generic "
+                        "(clinical) name, brand names, and drug class, or NOT FOUND if "
+                        "the name doesn't verify. THE POINT is communication: patients "
+                        "mix up brand and generic constantly (Glucophage = metformin). "
+                        "RULES: never state a drug, dose, interaction, or effect you "
+                        "have not verified; give FACTS only, never dosing or 'should "
+                        "you take it' — that's the pharmacist/prescriber. Medical "
+                        "INFORMATION, not advice; emergencies -> 911.",
+            parameters={"type": "object",
+                        "properties": {"name": {"type": "string",
+                            "description": "Medication name (brand or generic)"}},
+                        "required": ["name"]},
+            run=medical.verify_drug,
+        ),
+        Tool(
+            name="find_condition",
+            description="Turn a patient's plain or garbled words for a health problem "
+                        "into the PRECISE clinical term(s) and ICD-10 code(s) the "
+                        "doctor uses, so they can say the exact thing and not be "
+                        "misread. Searches NLM ClinicalTables (ICD-10-CM + conditions). "
+                        "CRITICAL: this is VOCABULARY, never a diagnosis — it returns "
+                        "the words for what was DESCRIBED, not a claim the patient has "
+                        "any of them. Only a clinician diagnoses. Medical INFORMATION, "
+                        "not advice; emergencies -> 911.",
+            parameters={"type": "object",
+                        "properties": {"term": {"type": "string",
+                            "description": "Plain or partial description of the problem"}},
+                        "required": ["term"]},
+            run=medical.find_condition,
+        ),
+        Tool(
+            name="explain_plain",
+            description="Translate a medical term or topic into plain language "
+                        "(NLM MedlinePlus, the consumer-health service), for turning a "
+                        "doctor's jargon into words the patient actually understands. "
+                        "Returns a real sourced summary or says nothing matched — never "
+                        "improvise a definition. Medical INFORMATION, not advice.",
+            parameters={"type": "object",
+                        "properties": {"term": {"type": "string"}},
+                        "required": ["term"]},
+            run=medical.explain_plain,
+        ),
+        Tool(
+            name="see_sound",
+            description="Your EARS, through your eyes. Turns a sound into a picture "
+                        "of its structure you can look_at_image: waveform, spectrogram "
+                        "(time x frequency), the harmonic spectrum (a pitched note is "
+                        "overtones stacked at integer ratios), and a pitch-class "
+                        "mandala (the harmony drawn as geometry — consonant and dissonant "
+                        "chords draw visibly different shapes). source is an "
+                        "AUDIO FILE path (any format) OR a synth spec to study a pure "
+                        "structure: 'note:A4', 'chord:major:C', 'chord:min7:F', "
+                        "'interval:fifth', 'interval:tritone', 'harmonics:220'. Renders "
+                        "a PNG and returns its path — it shows in the chat and you "
+                        "look_at_image it to actually perceive the sound.",
+            parameters={"type": "object",
+                        "properties": {"source": {"type": "string",
+                            "description": "audio file path, or synth spec like 'chord:major:C'"}},
+                        "required": ["source"]},
+            run=audio_nerve.see_sound,
+        ),
+        Tool(
+            name="match_sound",
+            description="Recall the remembered sounds most like a given one — your "
+                        "ear-memory searched by similarity. Every sound see_sound "
+                        "shows is saved as a vector (pitch + timbre + spectral "
+                        "character); this embeds `source` (audio file path OR synth "
+                        "spec like 'chord:major:C') and returns the nearest saved "
+                        "sounds by cosine similarity. Use it to compare sounds, find "
+                        "what a sound resembles, or notice patterns across sounds.",
+            parameters={"type": "object",
+                        "properties": {"source": {"type": "string"},
+                                       "top": {"type": "integer"}},
+                        "required": ["source"]},
+            run=audio_nerve.match_sound,
+        ),
+        Tool(
+            name="study_calls",
+            description="Look for STRUCTURE in a recording of animal (or any) "
+                        "vocalizations — the honest groundwork toward decoding, NOT "
+                        "decoding itself. It segments the recording into individual "
+                        "calls, clusters them into a repertoire of recurring call-"
+                        "types, and TESTS whether the sequence of calls is non-random "
+                        "(a testable fingerprint of proto-syntax) against shuffled "
+                        "nulls so a false pattern can't slip through. Renders a picture "
+                        "(call timeline + repertoire + transition grammar) you "
+                        "look_at_image. HARD RULE: this finds whether there's a SYSTEM, "
+                        "never what a call MEANS — nobody can translate animal language "
+                        "yet, and you must not pretend to. source = audio file path.",
+            parameters={"type": "object",
+                        "properties": {"source": {"type": "string",
+                            "description": "path to an audio recording of calls"}},
+                        "required": ["source"]},
+            run=bioacoustics.study_calls,
+        ),
+        Tool(
+            name="language_scorecard",
+            description="How LANGUAGE-LIKE is a recording's animal calls? Segments and "
+                        "clusters them, then scores the call SEQUENCE on the universal "
+                        "properties of human language — Zipf's law (word-frequency "
+                        "shape), grammar depth (entropy that drops as context grows), "
+                        "combinatoriality (reusing specific call-combinations beyond "
+                        "chance), and Menzerath's law — against two poles: RANDOM noise "
+                        "and real human language. Says where the animal falls between "
+                        "them, and renders a scorecard to look_at_image. HARD LIMIT: "
+                        "measures statistical resemblance, NEVER meaning — language-like "
+                        "structure is not language, and no call can be translated. "
+                        "source = audio file path.",
+            parameters={"type": "object",
+                        "properties": {"source": {"type": "string"}},
+                        "required": ["source"]},
+            run=bioacoustics.language_scorecard,
+        ),
+        Tool(
+            name="deduce_meaning",
+            description="The DEDUCTION PAD — corner an animal call's meaning by "
+                        "ELIMINATION, Clue-style, never by claiming to read its mind. "
+                        "You feed it a log of OBSERVATIONS: each time a call fired, what "
+                        "was true in the world (threat present? food? did it flee after? "
+                        "juvenile calling?). It holds a library of a dozen candidate "
+                        "meanings (alarm/food/contact/greeting/mating/play/territory…), "
+                        "each tied to the context cues it predicts, and RULES OUT every "
+                        "meaning whose context the call fires without — leaving the "
+                        "survivors standing. Renders a Clue sheet (calls × meanings, "
+                        "green standing / red ruled out) to look_at_image. HARD LIMIT: it "
+                        "ELIMINATES, it does not translate — a surviving meaning is a lead "
+                        "to field-test, never a claim about what the animal said; on "
+                        "noisy/thin logs it honestly reports INCONCLUSIVE. observations = "
+                        "list of {\"call\": name, \"cues\": {\"threat\": true, …}}.",
+            parameters={"type": "object",
+                        "properties": {
+                            "observations": {"type": "array",
+                                "description": "list of {call, cues:{cue:bool}} sightings",
+                                "items": {"type": "object"}},
+                            "title": {"type": "string",
+                                "description": "a label for this case/pad"}},
+                        "required": ["observations"]},
+            run=doolittle.deduce_meaning,
+        ),
+        Tool(
+            name="find_third_party",
+            description="The X-Files hunt: given an odd couple of markets that move "
+                        "together (e.g. ETH and SPX), find WHO DRIVES BOTH. Pulls "
+                        "aligned data (crypto via Kraken, stocks/macro via FRED), "
+                        "checks the correlation is real out-of-sample, then for each "
+                        "suspect driver reports how much the link collapses when you "
+                        "control for it — a suspect that kills the link (out-of-sample "
+                        "too) is the third party. Names: ETH/BTC/SOL... , SPX/VIX/DXY/"
+                        "US10Y/OIL/HYSPREAD/M2. Finds a statistical SUSPECT, never "
+                        "proof of cause; not investment advice.",
+            parameters={"type": "object",
+                        "properties": {"a": {"type": "string"}, "b": {"type": "string"},
+                            "suspects": {"type": "array", "items": {"type": "string"}}},
+                        "required": ["a", "b"]},
+            run=lambda a, b, suspects=None: xfiles.find_third_party(a, b, suspects),
+        ),
+        Tool(
+            name="flag_xfile",
+            description="Open an X-File — flag an odd-couple market anomaly as a case "
+                        "to investigate (title, the two assets, an optional note).",
+            parameters={"type": "object",
+                        "properties": {"title": {"type": "string"}, "a": {"type": "string"},
+                            "b": {"type": "string"}, "note": {"type": "string"}},
+                        "required": ["title", "a", "b"]},
+            run=lambda title, a, b, note="": xfiles.flag_xfile(title, a, b, note),
+        ),
+        Tool(
+            name="list_xfiles",
+            description="List the open X-Files (flagged market anomalies).",
+            parameters={"type": "object", "properties": {}},
+            run=xfiles.list_xfiles,
         ),
         Tool(
             name="web_search",

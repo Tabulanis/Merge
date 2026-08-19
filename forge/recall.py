@@ -162,8 +162,10 @@ def search(query: str, workspace: str = "", limit: int = 8) -> str:
         gist = c.get("gist", "")
         low = gist.lower()
         kw = sum(1.0 for w in words if w in low)
-        cos = float(qvec @ vecs[i]) if (qvec is not None and vecs is not None
-                                        and i < len(vecs)) else 0.0
+        _ok = (qvec is not None and vecs is not None and i < len(vecs)
+               and getattr(vecs[i], "shape", None) == qvec.shape
+               and bool(np.isfinite(vecs[i]).all()))
+        cos = float(qvec @ vecs[i]) if _ok else 0.0
         if kw == 0 and cos < _SEM_FLOOR:
             continue
         score = _W_SEM * max(cos, 0.0) + _W_KW * kw

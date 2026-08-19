@@ -332,9 +332,12 @@ class Session:
                 self.emit("text_delta", {"text": delta_buf[0]})
                 delta_buf[0] = ""
 
+        done_seen = False
         try:
             for ev in self.agent.run(text, ask=self.ask_permission,
                                      on_delta=on_delta):
+                if ev.kind == "done":
+                    done_seen = True
                 if ev.kind == "text" and ev.text.strip():
                     delta_buf[0] = ""   # final text supersedes buffered deltas
                     final_text = ev.text
@@ -354,6 +357,11 @@ class Session:
         except Exception as e:
             self.emit("error", {"text": f"{type(e).__name__}: {e}"})
         finally:
+            # A turn that dies on a fatal error must STILL close the stream —
+            # without a final 'done', every client waits forever (found live
+            # 2026-08-18: a mid-turn HTTP 400 left the UI hanging).
+            if not done_seen:
+                self.emit("done", {"usage": {}})
             self.busy = False
             self.last_used = time.time()
             # Off the record: no session file, no memory card — nothing recorded.
