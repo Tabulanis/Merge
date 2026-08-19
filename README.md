@@ -1,6 +1,6 @@
 # Merge
 
-**A complete AI companion that lives on your own machine — and refuses to lie to you.**
+**A complete AI assistant that lives on your own machine — and refuses to lie to you.**
 
 Merge is a local assistant with eyes, a voice, real memory, and a workshop.
 She runs on one consumer GPU, talks to any OpenAI-compatible model server,
