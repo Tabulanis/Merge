@@ -114,6 +114,14 @@ doctor can't misread, and they refuse to diagnose, dose, or give legal advice.
 A false "VERIFIED" is the one thing they cannot emit; emergencies get pointed
 at 911.
 
+### 📐 She designs real parts (CAD)
+She authors a part as plain JSON — named parameters plus a feature tree of
+primitives combined by constructive solid geometry — and the
+[Maker Studio](https://github.com/Tabulanis/maker-studio) (a tiny parametric
+modeler, its own repo) builds it, renders it, and hands back a link to spin it
+in 3D. She can look at her own render and refine it. Point her at a running
+Studio with `MAKER_STUDIO_URL` / `MAKER_STUDIO_DIR`.
+
 ### 🐾 Cornering meaning by elimination (the deduction pad)
 The most honest kind of ambition. First, tools that look for *structure* in
 animal calls — clustering a recording into a repertoire and null-testing
@@ -169,6 +177,7 @@ but the harness is model-agnostic and degrades gracefully.
 | `forge/paper_market.py` / `xfiles.py` &c. | the honest quant lab + the third-party hunt |
 | `forge/law.py` / `medical.py` | grounded legal & medical desks — verify, or NOT FOUND |
 | `forge/bioacoustics.py` / `doolittle.py` | animal-call structure + the deduction pad |
+| `forge/cad.py` | authors CAD parts for the Maker Studio (separate repo) |
 | `forge/audio_nerve.py` | sound → a visual "sound portrait" she can see |
 | `model-tests/` | the standing regression battery (sycophancy, false premises, neutrality) |
 

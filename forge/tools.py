@@ -29,7 +29,7 @@ from typing import Callable
 
 import httpx
 
-from . import (audio_nerve, bioacoustics, browser, business, datasets, doolittle, medical, xfiles, frameworks, identity, law, markets,
+from . import (audio_nerve, bioacoustics, browser, business, cad, datasets, doolittle, medical, xfiles, frameworks, identity, law, markets,
                market_regime, crossmap, news, paper_market, scanner, sims, walkforward)
 from .codetools import syntax_check
 from .config import load_config
@@ -1175,6 +1175,55 @@ def build_tools(ws: Workspace, fenced: bool = False) -> list[Tool]:
                 "required": ["query"],
             },
             run=law.find_regulation,
+        ),
+        Tool(
+            name="design_part",
+            description="Design a 3D part in the Maker Studio (a tiny parametric "
+                        "CAD / solid modeler). Write the part as JSON: named params "
+                        "plus a feature tree of primitives combined by constructive "
+                        "solid geometry. Saving AUTO-RENDERS the part to an image and "
+                        "returns its path — look_at_image that path to SEE your design "
+                        "(no browser needed), and it also shows in the user's chat, so "
+                        "this is how you SHOW them what you're making. Then tweak and "
+                        "resave. Box then cut a cylinder = a block with a hole. "
+                        "SHAPES (all centered at origin): box{w,h,d}; "
+                        "cylinder{r,h} — axis is Y (upright); sphere{r}; cone{r,h}. "
+                        "op: 'add' (default, fuse on) / 'cut' (carve out) / 'keep' "
+                        "(overlap only). Numbers may be params or expressions like "
+                        "\"w/2\". POSITIONING (this is how you place holes): every "
+                        "feature takes at:[x,y,z] to MOVE it and rotate:[x,y,z] "
+                        "(degrees) to TURN it — cut cylinders default vertical (Y), so "
+                        "a hole through an X-facing wall needs rotate:[0,0,90], through "
+                        "a Z-facing wall rotate:[90,0,0], then at:[...] to slide it to "
+                        "the spot. Make the cutter longer than the wall so it punches "
+                        "clean through. Example — a plate with two holes drilled down "
+                        "through it: {\"name\":\"plate\",\"params\":{\"w\":60,\"hole\":5},"
+                        "\"features\":[{\"shape\":\"box\",\"w\":\"w\",\"h\":4,\"d\":20},"
+                        "{\"shape\":\"cylinder\",\"op\":\"cut\",\"r\":\"hole/2\",\"h\":8,"
+                        "\"at\":[\"-w/2+8\",0,0]},{\"shape\":\"cylinder\",\"op\":\"cut\","
+                        "\"r\":\"hole/2\",\"h\":8,\"at\":[\"w/2-8\",0,0]}]}",
+            parameters={
+                "type": "object",
+                "properties": {"part": {"type": "object",
+                    "description": "The part: {name, params:{...}, features:[...]}"}},
+                "required": ["part"],
+            },
+            run=cad.design_part,
+        ),
+        Tool(
+            name="list_parts",
+            description="List the CAD parts saved in the Maker Studio.",
+            parameters={"type": "object", "properties": {}},
+            run=cad.list_parts,
+        ),
+        Tool(
+            name="get_part",
+            description="Fetch a saved CAD part's JSON so you can read or modify "
+                        "its feature tree, then resave with design_part.",
+            parameters={"type": "object",
+                        "properties": {"name": {"type": "string"}},
+                        "required": ["name"]},
+            run=cad.get_part,
         ),
         Tool(
             name="verify_drug",
