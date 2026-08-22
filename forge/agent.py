@@ -633,6 +633,8 @@ class Agent:
         force_compacted = False
         superego_bounced = False
         grounding_nudged = False
+        format_nudged = False      # tool call emitted as plain text
+        repeat_nudged = False      # same passage generated repeatedly
         _empty_retried = False
         _tidy_noted = False       # near-cap notes: once per turn, not per step
         _trim_noted = False
@@ -847,6 +849,42 @@ class Agent:
                 # concrete work object. Figurative chat ("I made a mistake",
                 # "I ran this morning") mentions no artifact and is left alone.
                 _txt = reply.text or ""
+                # A tool call emitted as PLAIN TEXT never executes — the turn
+                # ends and the model waits forever for a result that isn't
+                # coming (cost a live session 6.5 idle hours, 2026-08-22).
+                # Catch the markup and bounce once so it re-issues properly.
+                if (not format_nudged and
+                        ("<tool_call>" in _txt or "<function=" in _txt)):
+                    format_nudged = True
+                    self.history.append({
+                        "role": "user", "synthetic": True,
+                        "content": "Automatic harness check: your tool call came "
+                                   "out as plain text inside the message body, so "
+                                   "it was NOT executed and no result is coming. "
+                                   "Re-issue it as a proper structured tool call "
+                                   "now — call it, don't describe it."
+                                   + BOUNCE_TAIL,
+                    })
+                    continue
+                # The same passage generated three-plus times verbatim is a
+                # planning loop, not progress (a session burned an hour on one,
+                # 2026-08-22). One bounce: stop planning, act.
+                if not repeat_nudged and len(_txt) > 600:
+                    for _i in range(0, len(_txt) - 120, 60):
+                        if _txt.count(_txt[_i:_i + 120]) >= 3:
+                            repeat_nudged = True
+                            break
+                    if repeat_nudged:
+                        self.history.append({
+                            "role": "user", "synthetic": True,
+                            "content": "Automatic harness check: you are repeating "
+                                       "the same passage — that's a loop, not "
+                                       "progress. Stop planning. Make exactly ONE "
+                                       "tool call now that changes or verifies "
+                                       "something, or give your final answer in "
+                                       "one short paragraph." + BOUNCE_TAIL,
+                        })
+                        continue
                 _claims_work = (_CLAIMS_ACTION.search(_txt) and
                                 (_FILE_MENTION.search(_txt) or re.search(
                                     r"\b(the |a |your )?(command|script|test|tests|"

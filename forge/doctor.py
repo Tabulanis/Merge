@@ -143,8 +143,9 @@ def _extras(cfg: dict) -> list[Check]:
 
     # -- other local models that happen to be up -----------------------
     running = []
-    for port, label in ((8080, "big / coding"), (8081, "tiny"),
-                        (8082, "coder14"), (8090, "vision")):
+    for port, label in ((8080, "mote 3B"), (8081, "tiny"),
+                        (8082, "coder14"), (8083, "little 3B"),
+                        (8084, "big / coding"), (8090, "vision")):
         if _port_open(port):
             running.append(f"{label} (:{port})")
     out.append(Check("Local models running", OK if running else WARN,
@@ -246,6 +247,59 @@ def _extras(cfg: dict) -> list[Check]:
         out.append(Check("Kid mode", OK,
                          "ON — chat only, commands fenced to the workspace, "
                          "settings locked"))
+
+    # -- hazards that each broke a real session (2026-08-22) -----------
+    # 1) A directory literally named "~": a path written without expanduser
+    #    lands there; writes "succeed", reads find nothing, agents spin.
+    import glob as _glob
+    tilde_dirs = [d for d in _glob.glob(os.path.expanduser("~/~")) +
+                  _glob.glob(os.path.expanduser("~/*/~")) +
+                  _glob.glob(os.path.expanduser("~/*/*/~")) if os.path.isdir(d)]
+    if tilde_dirs:
+        out.append(Check("Literal '~' directories", FAIL,
+                         "Misfiled writes: " + ", ".join(tilde_dirs),
+                         "merge contents into the real paths, then delete"))
+    else:
+        out.append(Check("Literal '~' directories", OK, "none found"))
+
+    # 2) llama-server running without --jinja: tool calling silently
+    #    disabled — the tools array is ignored with no error at all.
+    nojinja = []
+    for pid in _glob.glob("/proc/[0-9]*/cmdline"):
+        try:
+            argv = open(pid, "rb").read().decode(errors="ignore").split("\0")
+        except OSError:
+            continue
+        if (argv and os.path.basename(argv[0]) == "llama-server"
+                and "--jinja" not in argv and "--embedding" not in argv):
+            port = ""
+            if "--port" in argv:
+                port = ":" + argv[argv.index("--port") + 1]
+            nojinja.append(port or "?")
+    if nojinja:
+        out.append(Check("llama-server --jinja", WARN,
+                         "tool calling DISABLED on " + ", ".join(nojinja),
+                         "restart those servers with --jinja"))
+    else:
+        out.append(Check("llama-server --jinja", OK, "all servers have it"))
+
+    # 3) config base_url vs what actually answers there: a stale port
+    #    entry silently serves the WRONG model (bit us when mote took 8080).
+    import json as _json, urllib.request as _rq
+    for name, m in (cfg.get("models") or {}).items():
+        url = (m.get("base_url") or "").rstrip("/")
+        want = m.get("model", "")
+        if not url or not want:
+            continue
+        try:
+            with _rq.urlopen(url + "/models", timeout=1) as r:
+                got = _json.load(r)["models"][0]["name"]
+        except Exception:
+            continue        # not running — the reachability check covers that
+        if not (got.startswith(want) or want.startswith(got)):
+            out.append(Check(f"Config truth: {name}", WARN,
+                             f"config says {want!r} but {url} serves {got!r}",
+                             "fix base_url or restart the right server"))
 
     return out
 

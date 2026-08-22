@@ -305,7 +305,13 @@ class Workspace:
 
     def resolve(self, path: str) -> Path:
         """Resolve a user/model-supplied path, refusing anything outside root."""
-        p = Path(path)
+        # Expand ~ FIRST. Without this, "~/x" is not absolute, so it gets
+        # joined onto the workspace root and silently creates a directory
+        # literally named "~" -- writes succeed, later reads look in the real
+        # home and find nothing, and the agent spins forever. Expanding here
+        # means ~ means what it says, and the fence below refuses it loudly
+        # if it lands outside the workspace.
+        p = Path(path).expanduser()
         full = (self.root / p).resolve() if not p.is_absolute() else p.resolve()
         if full != self.root and self.root not in full.parents:
             raise PermissionError(

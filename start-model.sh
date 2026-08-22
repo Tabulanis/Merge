@@ -25,7 +25,7 @@ case "${1:-big}" in
     # 32k context in the same VRAM as the old 16k: the KV cache (her
     # working memory on the card) is stored at 8-bit instead of 16-bit.
     # Needs flash attention on. Measured 2026-08-11 before keeping.
-    PORT=8080; CTX=32768; NGL=99
+    PORT=8084; CTX=32768; NGL=99  # moved off 8080: Mote's harness server owns 8080 now (2026-08-22)
     EXTRA="-fa on -ctk q8_0 -ctv q8_0" ;;
   tiny)
     # -ngl 0 keeps this one entirely in system RAM on the CPU, leaving the
@@ -82,7 +82,7 @@ case "${1:-big}" in
     # and in its own case until this one has EARNED the seat (battery + probes).
     MODEL=~/forge/models/Qwen3.8-27B-ABLITERATED-Q4_K_M.gguf
     MMPROJ=~/forge/models/mmproj-Qwen3.8-27B-ABLITERATED-F16.gguf
-    PORT=8085; CTX=24576; NGL=99
+    PORT=8085; CTX=32768; NGL=99
     EXTRA="-fa on -ctk q8_0 -ctv q8_0 --reasoning-budget 1024" ;;
   embed)
     # Her associative sense-organ: nomic-embed-text on CPU, embedding-only.
