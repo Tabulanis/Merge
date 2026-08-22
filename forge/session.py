@@ -171,6 +171,8 @@ class Session:
             reads=ws.reads,
             read_mtimes=ws.read_mtimes,
         )
+        # so the flight recorder files a turn under the right session
+        self.agent.session_id = self.id
 
     def reload_model(self, cfg: dict) -> None:
         """Swap the model but keep the conversation."""
@@ -223,6 +225,23 @@ class Session:
                 "log_base": self.log_base,
                 "history": [_ser_entry(m) for m in self.agent.history],
             }
+            # Last stop before disk. A secret typed into chat lives in the
+            # model HISTORY as well as the log, so scrub the serialized copy
+            # here rather than in one of the several paths that feed them.
+            try:
+                from .vault import scrub
+
+                def _deep(o):
+                    if isinstance(o, str):
+                        return scrub(o)
+                    if isinstance(o, dict):
+                        return {k: _deep(v) for k, v in o.items()}
+                    if isinstance(o, list):
+                        return [_deep(v) for v in o]
+                    return o
+                data = _deep(data)
+            except Exception:
+                pass
             tmp = SESS_DIR / f".{self.id}.tmp"
             tmp.write_text(json.dumps(data), encoding="utf-8")
             tmp.replace(SESS_DIR / f"{self.id}.json")
@@ -277,6 +296,15 @@ class Session:
     # -- events -------------------------------------------------------
 
     def emit(self, kind: str, data: dict) -> None:
+        # A secret typed straight into chat ("my password is hunter2") would
+        # otherwise land here in plaintext, permanently. The vault only covers
+        # what goes through the form; this covers what people actually do.
+        try:
+            from .vault import scrub
+            if isinstance(data.get("text"), str):
+                data = {**data, "text": scrub(data["text"])}
+        except Exception:
+            pass
         with self.cond:
             seq = self.log_base + len(self.log)
             self.log.append({"kind": kind, **data, "t": time.time(), "seq": seq})

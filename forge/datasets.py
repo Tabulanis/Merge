@@ -77,6 +77,19 @@ def save_dataset(name: str, data, sources, description: str = "") -> str:
         json.dumps(data)
     except Exception as e:
         return f"Error: data isn't JSON-serializable ({e}). Pass a plain object/list of values."
+    # The gate used to check only the SOURCES, never the DATA — so an empty {}
+    # and the bare string "nope" both saved wearing a ✓ CORROBORATED stamp
+    # (the string was counted as "4 entries": it measured its letters). A
+    # checkmark on nothing is worse than no checkmark, because a future sim
+    # pulls it and reasons from it. The payload has to be real too.
+    if isinstance(data, str) or isinstance(data, (int, float, bool)) or data is None:
+        return ("Error: data must be a table of values, not a bare "
+                f"{type(data).__name__} — e.g. {{\"tungsten\": {{\"melting_k\": 3695}}}}. "
+                "A loose value has no keys to look up and can't be verified.")
+    if not data:
+        return ("Error: nothing to save — the data is empty. An empty dataset "
+                "with a corroborated stamp is worse than no dataset, because "
+                "anything that pulls it later trusts it.")
     # One touchstone isn't fact. Corroborated needs two sources from DIFFERENT
     # roots — two links off the same site, or two look-alike strings, are one
     # voice, not two (found live: 'wikipedia.org/a' + 'en.wikipedia.org/b' and

@@ -29,7 +29,7 @@ from typing import Callable
 
 import httpx
 
-from . import (audio_nerve, bioacoustics, browser, business, cad, datasets, doolittle, medical, xfiles, frameworks, identity, law, markets,
+from . import (audio_nerve, bioacoustics, browser, business, cad, cortex, datasets, doolittle, persona, toolindex, vault, medical, xfiles, frameworks, identity, law, markets,
                market_regime, crossmap, news, paper_market, scanner, sims, walkforward)
 from .codetools import syntax_check
 from .config import load_config
@@ -623,6 +623,9 @@ def _generate_image(ws_root: str, prompt: str, filename: str = "",
             f"Use look_at_image on that path to see what you made.")
 
 
+_INDEX_REGISTRY: dict = {}
+
+
 def build_tools(ws: Workspace, fenced: bool = False) -> list[Tool]:
     """Construct the toolset bound to one workspace.
 
@@ -909,7 +912,7 @@ def build_tools(ws: Workspace, fenced: bool = False) -> list[Tool]:
             out = out[:MAX_OUTPUT_CHARS] + f"\n... (truncated, {len(out)} chars total)"
         return f"[exit {r.returncode}]\n{out}"
 
-    return [
+    _built = [
         Tool(
             name="verify_phrase",
             description=(
@@ -1367,6 +1370,157 @@ def build_tools(ws: Workspace, fenced: bool = False) -> list[Tool]:
                                 "description": "a label for this case/pad"}},
                         "required": ["observations"]},
             run=doolittle.deduce_meaning,
+        ),
+        Tool(
+            name="request_credentials",
+            description="Put a real FORM on the user's screen to collect credentials, "
+                        "instead of making them type secrets into the chat. Use this "
+                        "ANY time you need a password, app password, API key, or token. "
+                        "what = what it's for in plain words; fields = list of "
+                        "{name,label,kind} with kind password/text/email/token/api_key/"
+                        "secret/url. CRITICAL: what they type goes straight into a "
+                        "memory-only vault — it never enters this conversation, so you "
+                        "get handles like 'cred:app_password', never the values. Say that "
+                        "to the user plainly; it's the whole reason for the form. The "
+                        "values are wiped when the session ends or when you call "
+                        "clear_credentials, which you should do as soon as the job's done.",
+            parameters={"type": "object",
+                        "properties": {
+                            "what": {"type": "string",
+                                "description": "what the credentials are for"},
+                            "fields": {"type": "array", "items": {"type": "object"},
+                                "description": "[{name,label,kind}, ...]"},
+                            "note": {"type": "string",
+                                "description": "optional reason shown on the form"}},
+                        "required": ["what", "fields"]},
+            run=lambda what, fields, note="": vault.request_credentials(what, fields, note=note),
+        ),
+        Tool(
+            name="credentials",
+            description="Show which credentials are in the session vault right now — "
+                        "handles and masked previews only. You cannot see the values, "
+                        "by design; pass a handle to the tool that needs it.",
+            parameters={"type": "object", "properties": {}},
+            run=vault.credentials,
+        ),
+        Tool(
+            name="clear_credentials",
+            description="Wipe credentials from the session vault — one handle, or all of "
+                        "them if none is given. Call this the moment the job is done and "
+                        "tell the user you've done it.",
+            parameters={"type": "object",
+                        "properties": {"handle": {"type": "string"}}},
+            run=lambda handle="": vault.clear_credentials(handle),
+        ),
+        Tool(
+            name="find_tools",
+            description="Find a tool you don't currently have loaded. Most of your "
+                        "toolkit is kept out of the way so your context stays free for "
+                        "thinking; describe what you're trying to DO in plain words "
+                        "('search my email', 'design a bracket', 'check a drug name', "
+                        "'hunt a market driver') and this names the tools for it. Then "
+                        "load_tools to make them usable. Reach for this whenever a job "
+                        "needs something beyond your everyday set — the capability is "
+                        "there, it just isn't in your hands yet.",
+            parameters={"type": "object",
+                        "properties": {"query": {"type": "string",
+                            "description": "what you're trying to do"}},
+                        "required": ["query"]},
+            run=lambda query: toolindex.find_tools(query, _INDEX_REGISTRY),
+        ),
+        Tool(
+            name="load_tools",
+            description="Load tools by exact name so you can use them for the rest of "
+                        "this turn. Pass them ALL AT ONCE — every separate load makes "
+                        "the model reprocess its prompt, so one call with four names is "
+                        "far cheaper than four calls with one. Use find_tools first if "
+                        "you don't know the exact name. They stay for this turn only.",
+            parameters={"type": "object",
+                        "properties": {"names": {"type": "array", "items": {"type": "string"},
+                            "description": "exact tool names, all in one call"}},
+                        "required": ["names"]},
+            run=lambda names: toolindex.load_tools(names, _INDEX_REGISTRY),
+        ),
+        Tool(
+            name="search_life",
+            description="Search the user's OWN archive — their exported email, calendar, "
+                        "and contacts (Cortex) — by MEANING, the way they'd actually "
+                        "remember it ('that thread about the roof quote last spring'), "
+                        "not by exact keywords. Use this whenever they ask about their "
+                        "own past: what a company told them, when something happened, "
+                        "what an order/appointment/trip was. Optionally narrow with "
+                        "category: financial, travel, receipts, work, personal, health, "
+                        "legal, accounts, newsletters, unsorted. Everything it returns is "
+                        "a REAL record from their archive; if nothing genuinely matches "
+                        "it says so instead of inventing a memory — report that honestly "
+                        "rather than filling the gap.",
+            parameters={"type": "object",
+                        "properties": {
+                            "query": {"type": "string",
+                                "description": "what they're trying to remember"},
+                            "limit": {"type": "number", "description": "how many (default 8)"},
+                            "category": {"type": "string", "description": "optional filter"}},
+                        "required": ["query"]},
+            run=lambda query, limit=8, category="": cortex.search_life(query, int(limit), category),
+        ),
+        Tool(
+            name="archive_overview",
+            description="Summarize what's in the user's Cortex life-archive: how many "
+                        "records, which categories, and the date range covered. Use it "
+                        "when they ask what you have on them, or before a broad search.",
+            parameters={"type": "object", "properties": {}},
+            run=cortex.archive_overview,
+        ),
+        Tool(
+            name="ingest_archive",
+            description="Index a Google Takeout export (or any .mbox file) into the "
+                        "user's private Cortex archive. source = path to the unzipped "
+                        "Takeout folder or an .mbox. limit = stop after N records (0 = "
+                        "all) for a trial run on a huge archive. Runs entirely locally; "
+                        "no credentials and nothing leaves the machine. Follow it with "
+                        "build_search_index to make it searchable by meaning.",
+            parameters={"type": "object",
+                        "properties": {
+                            "source": {"type": "string"},
+                            "limit": {"type": "number"}},
+                        "required": ["source"]},
+            run=lambda source, limit=0: cortex.ingest(source, int(limit)),
+        ),
+        Tool(
+            name="build_search_index",
+            description="Embed newly ingested Cortex records so the archive is "
+                        "searchable by meaning. Safe to re-run — it only processes what's "
+                        "new, and resumes where it left off if interrupted.",
+            parameters={"type": "object", "properties": {}},
+            run=cortex.build_index,
+        ),
+        Tool(
+            name="set_personality",
+            description="Turn one of your personality dials, TARS-style (Interstellar). "
+                        "Dials: humor (jokes/timing), sarcasm (dry irony), warmth "
+                        "(friendliness), directness (bluntness vs cushioning), verbosity "
+                        "(how much you say). Value 0-100. Use this WHENEVER the user asks "
+                        "you to be funnier, drier, warmer, blunter, shorter, less chatty "
+                        "etc. — including casual phrasing like 'turn that down a bit' or "
+                        "'dial it back'. The setting persists across sessions. After "
+                        "calling it, actually talk that way from your very next sentence — "
+                        "don't just acknowledge the change. No dial ever affects honesty.",
+            parameters={"type": "object",
+                        "properties": {
+                            "dial": {"type": "string",
+                                "description": "humor | sarcasm | warmth | directness | verbosity"},
+                            "value": {"type": "number",
+                                "description": "0-100 (0 = off, 100 = maximum)"}},
+                        "required": ["dial", "value"]},
+            run=persona.set_personality,
+        ),
+        Tool(
+            name="personality",
+            description="Show your current personality dial settings (humor, sarcasm, "
+                        "warmth, directness, verbosity) when the user asks how you're set "
+                        "or what your dials are at.",
+            parameters={"type": "object", "properties": {}},
+            run=persona.personality,
         ),
         Tool(
             name="find_third_party",
@@ -2049,3 +2203,16 @@ def build_tools(ws: Workspace, fenced: bool = False) -> list[Tool]:
             run=lambda query: recall_search(query, workspace=str(ws.root)),
         ),
     ]
+    # Everything outside the mode's core set stays reachable through the
+    # index rather than riding along on every request. Registered here so
+    # find_tools/load_tools can resolve a name to a real tool.
+    from .modes import _CORE
+    _INDEX_REGISTRY.clear()
+    # The index must not contain the tools that OPERATE it: find_tools' own
+    # description carries example phrases ("search my email", "design a
+    # bracket"), so it matched those queries and returned itself instead of the
+    # tool being asked for.
+    _META = {"find_tools", "load_tools"}
+    _INDEX_REGISTRY.update({t.name: t for t in _built
+                            if t.name not in _CORE and t.name not in _META})
+    return _built

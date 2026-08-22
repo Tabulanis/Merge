@@ -41,6 +41,14 @@ def run(params):
 
 # A known case so the sim can prove itself. It's marked VALIDATED only if run()
 # reproduces `expect` within `tol`. Leave SELFTEST out and it stays EXPERIMENTAL.
+#
+# WHERE `expect` COMES FROM IS THE WHOLE POINT. It must be a number you can
+# point at somewhere else — a textbook worked example, a published figure, a
+# hand-derivation from first principles. A value read back off this sim's own
+# output makes the test circular: it will pass forever and prove only that the
+# code hasn't changed. Found live on four wing sims whose lift/drag expectation
+# was their own output, marked "Corrected" — they carried a ✓ that meant
+# nothing, and were demoted.
 # Make the ✓ mean something: `expect` should be an answer you KNOW is right from an
 # INDEPENDENT source (a textbook, a worked example) — NOT one you did in your own
 # head, or the sim just inherits your slip and the test proves nothing. Keep `tol`
@@ -211,6 +219,15 @@ def verify_shelf() -> str:
             now_valid = bool(st and st.get("pass"))
             status = ("✓ revalidated" if now_valid
                       else ("⚠ SELFTEST NOW FAILING" if st else "⚠ no selftest"))
+            # A selftest whose expectations were read off the sim's own output
+            # passes forever and proves nothing. Re-running it can't detect
+            # that — only a human reading it can — so once a sim is marked
+            # circular the immune system must not keep promoting it back.
+            # (Found live: four wing sims were demoted by hand and this loop
+            # restored their checkmarks on the very next verify.)
+            if meta.get("selftest_circular"):
+                now_valid = False
+                status = "⚠ EXPERIMENTAL — selftest is self-derived, proves nothing"
         was = bool(meta.get("validated"))
         if was != now_valid:
             meta["validated"] = now_valid

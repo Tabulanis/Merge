@@ -122,6 +122,27 @@ modeler, its own repo) builds it, renders it, and hands back a link to spin it
 in 3D. She can look at her own render and refine it. Point her at a running
 Studio with `MAKER_STUDIO_URL` / `MAKER_STUDIO_DIR`.
 
+### 🗄️ Your own life, searchable (Cortex)
+Point it at a Google Takeout export and it indexes your mail locally — sorted
+into buckets, searchable the way you actually remember things ("that thread
+about the roof quote last spring") rather than by keyword. No credentials are
+ever involved: it reads an archive you exported yourself, so there is nothing to
+revoke and nothing leaves the machine. Ask it for something that isn't there and
+it says so instead of inventing a memory.
+
+### 🔒 Secrets she can use but never see
+When she needs a credential she puts a real form on screen instead of asking you
+to paste a password into a chat box. The value goes straight to a memory-only
+vault and she receives a handle — `cred:app_password` — never the secret. She
+can spend it without holding it, and it is wiped when the session ends. Anything
+secret-shaped typed into the chat anyway is scrubbed before it can reach the
+session log, the review ledger, or her memory.
+
+### 🎛️ Personality as settings, not a costume
+Five dials — humor, sarcasm, warmth, directness, verbosity — each 0-100, TARS
+style. Say "turn the humor down to 20" and she does, and it persists. Honesty is
+deliberately not a dial: no setting makes her overstate what she knows.
+
 ### 🐾 Cornering meaning by elimination (the deduction pad)
 The most honest kind of ambition. First, tools that look for *structure* in
 animal calls — clustering a recording into a repertoire and null-testing
@@ -169,7 +190,13 @@ but the harness is model-agnostic and degrades gracefully.
 |---|---|
 | `forge/agent.py` | the loop, the honesty harness, memory compaction, landing gear |
 | `forge/providers.py` | OpenAI-compatible + Anthropic backends, streaming, tool calls |
-| `forge/tools.py` | the toolbelt (~60 tools) — files, shell, web, sims, browser, senses |
+| `forge/tools.py` | the toolbelt (~70 tools) — files, shell, web, sims, browser, senses |
+| `forge/toolindex.py` | tools loaded on demand, so the schemas don't eat the window |
+| `forge/cortex.py` | the local life-archive (Takeout in, meaning-search out) |
+| `forge/vault.py` | memory-only credential vault + the on-screen forms |
+| `forge/persona.py` | the personality dials |
+| `forge/forensic.py` | the flight recorder, for post-mortems |
+| `babysit.py` | supervisor view: tally, watch, replay, and hand jobs to her first |
 | `forge/server.py` | FastAPI dashboard: chat, SSE streaming, sessions, voice, uploads |
 | `forge/sims.py` / `datasets.py` | her self-built instruments + validation/corroboration gates |
 | `forge/recall.py` / `embed.py` | three-speed memory, the librarian, associative retrieval |

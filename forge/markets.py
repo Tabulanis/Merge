@@ -46,6 +46,14 @@ def implied_prob(p: dict):
         d = (a / 100 + 1) if a > 0 else (100 / (-a) + 1)
     else:
         raise KeyError("decimal_odds or american_odds")
+    # Decimal odds are a payout multiplier on the stake, so they're always
+    # above 1.0. Anything else produced a confident negative "probability"
+    # (-2 odds gave "implied probability: -0.5") or a bare ZeroDivisionError.
+    if not d > 1.0:
+        raise ValueError(
+            f"decimal odds must be greater than 1.0 (got {d}) — they're a "
+            "payout multiplier on your stake, so 2.5 means 'win 1.5 plus your "
+            "stake back'. For american odds use american_odds instead.")
     ip = 1 / d
     rows = [("implied probability", ip, "pct"), ("break-even win rate", ip, "pct")]
     if p.get("your_prob") is not None:
@@ -87,6 +95,16 @@ def arbitrage(p: dict):
     """Two-venue arb: decimal odds_a and odds_b on the two mutually-exclusive
     outcomes. Arb exists only if 1/a + 1/b < 1. cost_pct trims the margin."""
     a, b = _need(p, "odds_a", "odds_b")
+    # Decimal odds are payout multipliers, always above 1.0. Without this,
+    # a negative value slid under the 'inv >= 1' no-arb guard (inv went
+    # NEGATIVE, so it read as a fat edge) and the function confidently
+    # reported a negative implied probability and a negative stake.
+    # Found by Merge auditing this module.
+    if not (a > 1.0 and b > 1.0):
+        raise ValueError(
+            f"both odds must be decimal odds above 1.0 (got {a} and {b}) — "
+            "they're payout multipliers on the stake, so 2.1 means 'win 1.1 "
+            "plus your stake back'.")
     inv = 1 / a + 1 / b
     costs = float(p.get("cost_pct", 0) or 0)
     if inv >= 1:

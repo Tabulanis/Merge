@@ -1,0 +1,41 @@
+{
+ "data": {
+  "carbon_dioxide": {
+   "tc_k": 304.13,
+   "pc_mpa": 7.377
+  },
+  "water": {
+   "tc_k": 647.096,
+   "pc_mpa": 22.064
+  },
+  "nitrogen": {
+   "tc_k": 126.2,
+   "pc_mpa": 3.3958
+  },
+  "methane": {
+   "tc_k": 190.56,
+   "pc_mpa": 4.599
+  },
+  "ethane": {
+   "tc_k": 305.33,
+   "pc_mpa": 4.872
+  },
+  "argon": {
+   "tc_k": 150.8,
+   "pc_mpa": 4.898
+  },
+  "ammonia": {
+   "tc_k": 405.4,
+   "pc_mpa": 11.283
+  }
+ },
+ "sources": [
+  "https://www.engineeringtoolbox.com/gas-critical-temperature-pressure-d_161.html",
+  "https://en.wikipedia.org/wiki/Critical_point_(thermodynamics)",
+  "https://en.wikipedia.org/wiki/Critical_points_of_the_elements_(data_page)",
+  "https://en.wikipedia.org/wiki/Supercritical_fluid"
+ ],
+ "corroborated": true,
+ "description": "Critical temperature (K) and critical pressure (MPa) for seven common fluids. Every entry corroborated by two independent sources (Engineering ToolBox + Wikipedia/peer-reviewed). Values are the standard literature critical constants; small last-digit differences between sources are expected.",
+ "saved": 1787341760.0170255
+}

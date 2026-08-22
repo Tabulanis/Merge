@@ -326,6 +326,34 @@ def permission(spec: PermissionSpec):
     return {"ok": True}
 
 
+class CredentialSpec(BaseModel):
+    session: str = ""
+    values: dict = {}
+    ttl: float = 3600.0
+
+
+@app.post("/api/credentials", dependencies=[Depends(require_token)])
+def credentials(spec: CredentialSpec):
+    """A submitted credential form. The values land in the memory-only vault
+    and are NEVER echoed back or put into the model's context — the agent gets
+    handles. This endpoint is the only path a secret takes, and it is one-way."""
+    from . import vault
+    handles = []
+    for name, value in list(spec.values.items())[:10]:
+        if value is None or value == "":
+            continue
+        handles.append(vault.put(str(name), str(value), session=spec.session,
+                                 ttl=spec.ttl))
+    # Deliberately returns handles only; the caller already has the values.
+    return {"ok": True, "handles": handles}
+
+
+@app.post("/api/credentials/clear", dependencies=[Depends(require_token)])
+def credentials_clear(spec: CredentialSpec):
+    from . import vault
+    return {"ok": True, "message": vault.clear(session=spec.session)}
+
+
 @app.get("/api/sessions", dependencies=[Depends(require_token)])
 def sessions():
     STORE.rescan()   # terminal chats belong in the drawer too

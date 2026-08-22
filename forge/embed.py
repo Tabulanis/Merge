@@ -39,10 +39,26 @@ def available() -> bool:
         return False
 
 
+# The server refuses (or times out on) large batches: measured live, 16 texts
+# took 12s and 32 came back a failure. Callers were passing far more than that —
+# Cortex indexes in chunks of 64 — and got a silent None, so a whole archive
+# could fail to embed with nothing said. Split the work here so every caller is
+# safe rather than each having to know the limit.
+_BATCH = 12
+
+
 def _post(texts: list[str]) -> np.ndarray | None:
     """Raw call → L2-normalized rows (so a dot product IS cosine). None if down."""
     if not texts:
         return np.empty((0, DIM), dtype="float32")
+    if len(texts) > _BATCH:
+        out = []
+        for i in range(0, len(texts), _BATCH):
+            part = _post(texts[i:i + _BATCH])
+            if part is None:
+                return None          # a failed chunk fails the whole call, loudly
+            out.append(part)
+        return np.vstack(out)
     try:
         r = httpx.post(_base() + "/embeddings",
                        json={"input": texts, "model": "embed"}, timeout=_TIMEOUT)

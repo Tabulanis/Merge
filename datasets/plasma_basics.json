@@ -1,0 +1,61 @@
+{
+ "data": {
+  "electron_mass_kg": 9.1093837139e-31,
+  "proton_mass_kg": 1.67262192595e-27,
+  "elementary_charge_C": 1.602176634e-19,
+  "vacuum_permittivity_F_per_m": 8.8541878188e-12,
+  "boltzmann_constant_J_per_K": 1.380649e-23,
+  "hydrogen_first_ionization_eV": 13.5984,
+  "helium_first_ionization_eV": 24.5874,
+  "argon_first_ionization_eV": 15.76,
+  "corroboration": {
+   "electron_mass_kg": [
+    "NIST CODATA",
+    "The Physics Hypertextbook"
+   ],
+   "proton_mass_kg": [
+    "NIST CODATA",
+    "The Physics Hypertextbook"
+   ],
+   "elementary_charge_C": [
+    "NIST CODATA",
+    "The Physics Hypertextbook"
+   ],
+   "vacuum_permittivity_F_per_m": [
+    "NIST CODATA",
+    "The Physics Hypertextbook"
+   ],
+   "boltzmann_constant_J_per_K": [
+    "NIST CODATA",
+    "The Physics Hypertextbook"
+   ],
+   "hydrogen_first_ionization_eV": [
+    "periodic-table.org",
+    "Wikipedia ionization energies data page"
+   ],
+   "helium_first_ionization_eV": [
+    "NIST CCCBDB",
+    "NIST Atomic Data (NIST Atomic Spectra Database)"
+   ],
+   "argon_first_ionization_eV": [
+    "periodic-table.org",
+    "Wikipedia ionization energies data page"
+   ]
+  }
+ },
+ "sources": [
+  "https://physics.nist.gov/cgi-bin/cuu/Value?me",
+  "https://physics.nist.gov/cgi-bin/cuu/Value?mp",
+  "https://physics.nist.gov/cgi-bin/cuu/Value?e",
+  "https://physics.nist.gov/cgi-bin/cuu/Value?k",
+  "https://physics.nist.gov/cgi-bin/cuu/Value?ep0",
+  "https://physics.info/constants/",
+  "https://www.periodic-table.org/argon-ionization-energy/",
+  "https://en.wikipedia.org/wiki/Ionization_energies_of_the_elements_(data_page)",
+  "https://cccbdb.nist.gov/ie2x.asp?casno=7440597",
+  "https://physics.nist.gov/PhysRefData/Handbook/Tables/heliumtable1.htm"
+ ],
+ "corroborated": true,
+ "description": "Fundamental plasma constants: electron/proton mass, elementary charge, vacuum permittivity, Boltzmann constant, and first ionization energies of H/He/Ar. All constants corroborated by two independent sources (NIST CODATA + Physics Hypertextbook). Ionization energies cross-checked against NIST CCCBDB/Atomic Data for He and periodic-table.org + Wikipedia data page for H/Ar.",
+ "saved": 1787340528.9765685
+}

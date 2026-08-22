@@ -1,0 +1,93 @@
+{
+ "plasma_propulsion": {
+  "description": "Electric/plasma rocket thrust from power, efficiency, and Isp",
+  "why": "Need validated numbers for ion-drive performance without hand-calculating every time",
+  "validated": true,
+  "created": 1786858480.9863849,
+  "updated": 1786858480.9863865
+ },
+ "rocket_stage_dv": {
+  "description": "Delta-v from wet mass, dry mass, and specific impulse",
+  "why": "Avoid hand-computing the rocket equation for every stage design",
+  "validated": true,
+  "created": 1786862738.2444832,
+  "updated": 1786862738.2444842
+ },
+ "escape_velocity": {
+  "description": "Escape velocity from a celestial body's mass and radius",
+  "why": "Reusable tool for comparing escape velocities across planets and moons without re-deriving the formula each time",
+  "validated": true,
+  "created": 1786863077.7756834,
+  "updated": 1786863077.775684
+ },
+ "plasma_parameters": {
+  "description": "Plasma frequency, Debye length, and Debye-sphere particle count from n_e and T_e",
+  "why": "Core plasma diagnostics; every plasma physicist computes these from n_e and T_e",
+  "validated": true,
+  "created": 1787340691.0995436,
+  "updated": 1787340691.0995443
+ },
+ "phase_state": {
+  "description": "Classify a fluid's phase state (super-critical / liquid / gas / near-critical) from T and P vs. its critical point",
+  "why": "Supercritical-fluid work needs an instant read on whether a given T,P is super-critical; the reduced coordinates (Tr, Pr) are the universal way to express it",
+  "validated": true,
+  "created": 1787341933.381488,
+  "updated": 1787341933.381489
+ },
+ "carnot_cycle": {
+  "description": "Maximum (Carnot) thermal efficiency between two reservoirs",
+  "why": "The upper bound every real heat engine is measured against; two numbers, one answer",
+  "validated": true,
+  "created": 1787342074.5516734,
+  "updated": 1787342074.5516741
+ },
+ "prob_birthday": {
+  "description": "Probability at least two of N people share a birthday (365-day year)",
+  "why": "Standard closed-form birthday problem; intuition badly underestimates it",
+  "validated": true,
+  "created": 1787344652.164468,
+  "updated": 1787344652.1644688
+ },
+ "prob_binomial": {
+  "description": "P(exactly k successes in n Bernoulli trials at prob p), plus mean and variance",
+  "why": "Core discrete distribution; needed anywhere success-count probabilities come up",
+  "validated": true,
+  "created": 1787344652.2348664,
+  "updated": 1787344652.2348676
+ },
+ "prob_bayes": {
+  "description": "Posterior P(condition|positive test) from prevalence, sensitivity, specificity",
+  "why": "Base-rate fallacy: intuition says ~sensitivity when a test is '99% accurate', and is badly wrong for rare conditions",
+  "validated": true,
+  "created": 1787344652.2930596,
+  "updated": 1787344652.29306
+ },
+ "prob_normal": {
+  "description": "P(a <= Z <= b) for the standard normal (mean 0, sd 1)",
+  "why": "Workhorse continuous probability lookup; closed form via erf",
+  "validated": true,
+  "created": 1787344652.3733213,
+  "updated": 1787344652.373322
+ },
+ "ee_rc": {
+  "description": "RC circuit: time constant, cutoff frequency, charge voltage",
+  "why": "Standard first-order RC analysis; needed repeatedly for filter design and transient questions",
+  "validated": true,
+  "created": 1787344773.684807,
+  "updated": 1787344773.684808
+ },
+ "ee_reactance": {
+  "description": "Capacitive/inductive reactance and LC resonant frequency",
+  "why": "Recurring AC circuit analysis; selftest values are textbook (1/(2 pi f C) etc.)",
+  "validated": true,
+  "created": 1787344838.1610084,
+  "updated": 1787344838.1610093
+ },
+ "ee_power": {
+  "description": "Power from any two of V/I/R (incl. I^2R) and decibels for power/voltage ratios",
+  "why": "Ubiquitous EE arithmetic; selftest values are textbook (12V*2A=24W, 10log10(2)=3.0103 dB, 20log10(2)=6.0206 dB)",
+  "validated": true,
+  "created": 1787344912.204957,
+  "updated": 1787344912.2049577
+ }
+}

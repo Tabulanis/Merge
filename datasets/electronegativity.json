@@ -1,0 +1,23 @@
+{
+ "data": {
+  "hydrogen": 2.2,
+  "carbon": 2.55,
+  "nitrogen": 3.04,
+  "oxygen": 3.44,
+  "fluorine": 3.98,
+  "sodium": 0.93,
+  "chlorine": 3.16,
+  "sulfur": 2.58,
+  "iron": 1.83,
+  "gold": 2.54,
+  "_scale": "Pauling (dimensionless)",
+  "_note": "Values cross-checked between two independent sources; all overlapping elements agree. Chemistry Learner states values for H, C, N, O, Na, Cl and matches Quemist exactly; S, Fe, Au sourced from the full table."
+ },
+ "sources": [
+  "https://quemist.com/tables/electronegativity",
+  "https://www.chemistrylearner.com/electronegativity.html"
+ ],
+ "corroborated": true,
+ "description": "Pauling-scale electronegativity for 10 common elements (H, C, N, O, F, Na, Cl, S, Fe, Au)",
+ "saved": 1787339919.6096158
+}

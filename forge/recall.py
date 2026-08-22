@@ -63,13 +63,38 @@ SESSION_SCAN_MAX = 40      # most-recent transcripts the verbatim scan reads
 # --- hybrid scoring weights ---
 _W_SEM = 3.0               # weight on embedding cosine (0..1) for a card
 _W_KW = 1.0               # weight per keyword hit
-_SEM_FLOOR = 0.50          # a card with no keyword hit still counts if cosine >= this
+# A card with no keyword hit still counts if cosine >= this. Measured on the
+# live 453-card store: a true paraphrase of a card scores ~0.68 and pulls the
+# right card, while pure gibberish ("zzzz qqqq wubble") still tops out at 0.59
+# — so the old 0.50 floor let noise through and returned it as a memory, which
+# is how an unrelated card ends up quoted as context. Short card text makes
+# cosine cluster tightly, so the bar has to sit above that noise ceiling.
+_SEM_FLOOR = 0.62
 _WS_BOOST = 0.5            # same-workspace nudge
 
 
+# Words so common that matching on them is noise: nearly every card contains
+# "the", so one stopword in a query scored a keyword hit against the whole
+# store and drowned the real matches — "the deduction pad for animal calls"
+# came back with an unrelated card about a helper function.
+_STOP = {
+    "the", "and", "for", "was", "were", "that", "this", "with", "from", "you",
+    "your", "our", "its", "has", "had", "have", "are", "but", "not", "any",
+    "all", "can", "could", "would", "should", "what", "when", "where", "which",
+    "who", "how", "why", "did", "does", "done", "get", "got", "put", "one",
+    "out", "about", "into", "over", "just", "some", "than", "then", "them",
+    "they", "there", "here", "been", "being", "also", "only", "very", "much",
+    "more", "most", "other", "same", "such", "each", "few", "own", "too",
+}
+
+
 def _words(query: str) -> list[str]:
-    return [w for w in "".join(c.lower() if c.isalnum() else " "
-                               for c in query).split() if len(w) >= 3]
+    words = [w for w in "".join(c.lower() if c.isalnum() else " "
+                                for c in query).split() if len(w) >= 3]
+    kept = [w for w in words if w not in _STOP]
+    # If the query was ALL stopwords, fall back rather than searching for
+    # nothing at all.
+    return kept or words
 
 
 def _snippet(text: str, words: list[str], width: int = 150) -> str:
@@ -220,6 +245,12 @@ def remember_turn(user_text: str, answer_text: str,
         return
     try:
         QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+        # Never let a chat-typed secret into the permanent memory store.
+        try:
+            from .vault import scrub
+            user_text, answer_text = scrub(user_text), scrub(answer_text)
+        except Exception:
+            pass
         entry = {"t": time.time(), "workspace": workspace,
                  "session": session_id,
                  "user": user_text[:EXCHANGE_LIMIT // 2],

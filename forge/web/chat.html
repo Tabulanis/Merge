@@ -494,6 +494,7 @@ function render(e) {
   else if (e.kind === 'error')  { endStream(); el('err', esc(e.text)); }
   else if (e.kind === 'note')   el('note', esc(e.text));
   else if (e.kind === 'permission') permission(e);
+  else if (e.kind === 'form') credentialForm(e);
   else if (e.kind === 'done')   { endStream(); setWorking(false); flushQueue();
                                   if (voiceMode) speakAndContinue();
                                   else if (speakAll) { const t = voiceReply.trim(); voiceReply = ''; if (t) say(t); } }
@@ -517,6 +518,69 @@ function permission(e) {
   };
   card.querySelector('.yes').onclick = () => answer(true);
   card.querySelector('.no').onclick  = () => answer(false);
+  log.scrollTop = log.scrollHeight;
+}
+
+// A credential form. The model supplies FIELDS ONLY (name/label/kind) and this
+// trusted code builds the markup — nothing the model or anything it has read
+// can inject HTML into the window. What's typed goes straight to the vault:
+// it never enters the conversation, so it can't reach the session log, her
+// memory, or the review ledger.
+function credentialForm(e) {
+  const f = e.args || {};
+  const fields = (f.fields || []).slice(0, 10);
+  const card = el('perm');
+  const head = document.createElement('div');
+  head.className = 'what';
+  head.textContent = '🔒 ' + (f.what ? 'Credentials for ' + f.what : 'Credentials needed');
+  card.appendChild(head);
+  if (f.note) {
+    const n = document.createElement('div');
+    n.className = 'detail'; n.textContent = f.note; card.appendChild(n);
+  }
+  const priv = document.createElement('div');
+  priv.className = 'detail';
+  priv.textContent = 'Stored in memory only — she never sees these values, and '
+                   + 'they are wiped when the session ends.';
+  card.appendChild(priv);
+
+  const inputs = {};
+  fields.forEach(fl => {
+    const wrap = document.createElement('div');
+    wrap.style.margin = '8px 0';
+    const lab = document.createElement('label');
+    lab.textContent = fl.label || fl.name;
+    lab.style.cssText = 'display:block;font-size:.85em;opacity:.8;margin-bottom:3px';
+    const inp = document.createElement('input');
+    const secret = ['password','token','api_key','secret'].indexOf(fl.kind) >= 0;
+    inp.type = secret ? 'password' : (fl.kind === 'email' ? 'email' : 'text');
+    inp.autocomplete = secret ? 'new-password' : 'off';
+    inp.style.cssText = 'width:100%;padding:8px;border-radius:6px;border:1px solid #444;'
+                      + 'background:#111;color:#eee;font-size:1em';
+    wrap.appendChild(lab); wrap.appendChild(inp); card.appendChild(wrap);
+    inputs[fl.name] = inp;
+  });
+
+  const row = document.createElement('div');
+  row.className = 'row';
+  const no = document.createElement('button'); no.className = 'no'; no.textContent = 'Cancel';
+  const yes = document.createElement('button'); yes.className = 'yes'; yes.textContent = 'Send securely';
+  row.appendChild(no); row.appendChild(yes); card.appendChild(row);
+
+  const finish = txt => { card.classList.add('done'); card.innerHTML = '';
+                          const d = document.createElement('div');
+                          d.className = 'what'; d.textContent = txt; card.appendChild(d); };
+  yes.onclick = () => {
+    const values = {};
+    Object.keys(inputs).forEach(k => { values[k] = inputs[k].value; });
+    api('/api/credentials', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ session: SESSION, values })
+    }).then(() => finish('✓ Sent to the vault — she has handles, not your secrets.'))
+      .catch(() => finish('✗ Could not store those.'));
+    Object.keys(inputs).forEach(k => { inputs[k].value = ''; });
+  };
+  no.onclick = () => finish('✗ Cancelled — nothing was stored.');
   log.scrollTop = log.scrollHeight;
 }
 

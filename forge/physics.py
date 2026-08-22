@@ -44,6 +44,14 @@ def relativity_sim(scenario: str, v_c: float = 0.0,
     if scenario == "twin_trip":
         if v_c <= 0:
             return "Error: twin_trip needs v_c > 0 (fraction of c)."
+        # Found by Merge auditing this module: distance_ly was unguarded, so a
+        # negative distance printed "Earth twin ages: -8.0000 years" and a
+        # negative age gap — people aging backwards, with formula annotations
+        # attached, which reads exactly like a real result.
+        if distance_ly <= 0:
+            return ("Error: twin_trip needs distance_ly > 0 — a round trip to a "
+                    "negative distance isn't a journey, and the ages it produces "
+                    "would be negative too.")
         g = _gamma(v_c)
         earth_years = 2.0 * distance_ly / v_c          # out and back
         traveler_years = earth_years / g

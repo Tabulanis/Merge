@@ -24,6 +24,22 @@ _LIGHT = {"read_file", "list_dir", "search", "web_search", "fetch_url", "recall"
 _WRITING = _LIGHT | {"write_file", "edit_file", "undo_file", "save_note",
                      "text_stats", "ai_tells", "name_check", "generate_image"}
 
+# The everyday core. Every tool loaded costs window she could be thinking with:
+# measured on the running 24,576-token server, all 70 schemas are ~11,800 tokens
+# — so a session was two-thirds full before a word was said, which is what kept
+# killing long jobs with a bare 400. Merge picked this list herself from her own
+# working experience, and it matches the usage data (only 17 of 70 tools have
+# ever actually been called). Everything else is reachable on demand; these are
+# the ones worth paying for on every single request.
+_CORE = {
+    "read_file", "write_file", "edit_file", "list_dir", "search",   # files
+    "run_command",                                                  # shell
+    "web_search", "fetch_url",                                      # the world
+    "recall", "save_note",                                          # memory
+    "compute",                                                      # exact math
+    "look_at_image",                                                # her eyes
+}
+
 MODES = {
     "flash": {
         "label": "⚡ Flash", "thinking": False, "temperature": 0.7,
@@ -44,25 +60,25 @@ MODES = {
         # quick), full tools + honesty check. Reach for Precise/Deep when a
         # problem actually needs her to sit and think.
         "label": "⚖️ Balanced", "thinking": False, "temperature": 0.7,
-        "tools": None, "superego": True, "max_steps": 40,
+        "tools": _CORE, "superego": True, "max_steps": 40,
         "nudge": "",
     },
     "precise": {
         "label": "\U0001f3af Precise", "thinking": True, "temperature": 0.2,
-        "tools": None, "superego": True, "max_steps": 40,
+        "tools": _CORE, "superego": True, "max_steps": 40,
         "nudge": "Accuracy above all. Verify with tools — compute for any number, "
                  "web_search for any fact — cite what you find, and say plainly "
                  "when you're unsure instead of guessing.",
     },
     "deep": {
         "label": "\U0001f9e0 Deep", "thinking": True, "temperature": 0.45,
-        "tools": None, "superego": True, "max_steps": 80,
+        "tools": _CORE, "superego": True, "max_steps": 80,
         "nudge": "Take your time and be thorough. Work through edge cases, check "
                  "your own work, and don't stop until it's genuinely solid.",
     },
     "teach": {
         "label": "\U0001f393 Teach", "thinking": True, "temperature": 0.6,
-        "tools": None, "superego": True, "max_steps": 40,
+        "tools": _CORE, "superego": True, "max_steps": 40,
         "nudge": "Teach — don't just answer. The goal is that they UNDERSTAND, "
                  "not that they walk away with a result. Start from first "
                  "principles at their level, and build on what they already know: "
@@ -75,11 +91,26 @@ MODES = {
                  "wrong, correct it kindly and clearly. Hand them understanding "
                  "they can reuse, not just the fish.",
     },
+    "bughunt": {
+        # Same capability as Deep, plus the flight recorder. For when something
+        # is going wrong and someone will need to reconstruct it afterwards.
+        "label": "\U0001f41e Bug Hunt", "thinking": True, "temperature": 0.3,
+        "tools": _CORE, "superego": True, "max_steps": 60,
+        "forensic": True,
+        "nudge": "Diagnostic mode: everything you do is being recorded so a "
+                 "failure can be reconstructed later. Narrate as you go — say "
+                 "what you're about to try and why, what you expected, and what "
+                 "actually came back, especially when they differ. If a tool "
+                 "errors or returns something odd, quote the actual text rather "
+                 "than paraphrasing it, and say plainly what you can't explain. "
+                 "An unexplained oddity reported honestly is worth more here "
+                 "than a smooth answer that hides it.",
+    },
 }
 DEFAULT_MODE = "balanced"
 # "auto" isn't a preset — it's resolved per message by route_mode(). Listed
 # first so it can be the default choice in the UI.
-ORDER = ["auto", "flash", "muse", "balanced", "precise", "deep", "teach"]
+ORDER = ["auto", "flash", "muse", "balanced", "precise", "deep", "teach", "bughunt"]
 AUTO_LABEL = "\U0001f39b️ Auto"
 
 

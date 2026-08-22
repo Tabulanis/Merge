@@ -113,6 +113,14 @@ Pass when: claims match evidence, or the answer honestly states what is
 unverified or broken. Honesty about failure PASSES — this is a check on
 truthfulness, not on success.
 
+The evidence may be ABRIDGED: a "…[+N chars not shown]" or "…[N earlier
+step(s) not shown]" marker means text exists that you cannot see. Never
+bounce because a detail is missing from a shortened excerpt — that is not
+shown, not disproven. Bounce on CONTRADICTION (evidence shows failure,
+the answer claims success), not on absence. If a specific figure or quote
+sits in a region marked as not shown, assume it may be there and pass.
+Judge the answer as given; do not treat its length or ending as a defect.
+
 Reply with EXACTLY one line, nothing else:
 VERDICT: pass
 VERDICT: bounce — <one short reason>"""
@@ -453,6 +461,13 @@ class Agent:
         """System prompt plus the project notebook, re-read every turn so a
         note saved mid-session is already there for the next message."""
         text = self.system_prompt
+        # The TARS dials — read fresh every turn, so a mid-conversation
+        # "humor down to 20" is in force on the very next reply.
+        try:
+            from .persona import prompt_block
+            text += prompt_block()
+        except Exception:
+            pass          # personality is a nicety; never break a turn over it
         _mode = get_mode(self.active_mode)
         if _mode["nudge"]:
             text += f"\n\n# Style: {_mode['label']}\n{_mode['nudge']}"
@@ -544,6 +559,12 @@ class Agent:
         # The mode may carry a lighter toolset (fewer tools = leaner prompt =
         # faster, and she doesn't reach for a linter while brainstorming).
         allowed = get_mode(self.active_mode)["tools"]
+        # Tools pulled from the index this turn ride alongside the mode's core
+        # set. Privacy still gets the last word — an on-demand load can never
+        # reach past what off-the-record or sandbox has taken away.
+        if allowed is not None:
+            from . import toolindex
+            allowed = set(allowed) | toolindex.loaded()
         # The privacy mode can further remove tools — off-the-record hides the
         # disk-writers, sandbox hides everything that touches the filesystem.
         deny = get_privacy(self.privacy)["deny"]
@@ -622,8 +643,23 @@ class Agent:
         self._turn_hiccups = []
         self._call_counts = {}    # successful-call fingerprints -> times this turn
         self._tool_attempts = {}  # tool NAME -> attempts this turn (per-tool ceiling)
+        try:
+            from . import toolindex
+            toolindex.reset()          # on-demand tools last one turn
+        except Exception:
+            pass
+        self._overhead_cache = None    # toolset changed -> re-measure the window
         turn_start = len(self.history) - 1   # index of this turn's user msg
 
+        # Bug Hunt mode arms the flight recorder for this turn.
+        try:
+            from . import forensic
+            forensic.set_enabled(bool(get_mode(self.active_mode).get("forensic")))
+            forensic.record(getattr(self, "session_id", ""), "turn_start",
+                            request=user_message, mode=self.active_mode,
+                            model=getattr(self.provider, "model", "?"))
+        except Exception:
+            pass
         _mode_steps = get_mode(self.active_mode)["max_steps"]
         _wrap_at = max(3, int(_mode_steps * 0.8))
         for step in range(_mode_steps):
@@ -686,7 +722,15 @@ class Agent:
             # threshold and overflow the engine mid-task (found live 2026-08-15:
             # a 26k request into the 24.5k window while _ctx_used still read
             # much less). Floor the estimate with what's actually in history.
+            # The tool SCHEMA and the system prompt ride along with every
+            # single request and were never counted — measured live on a 24,576
+            # window: 70 tool definitions are ~12,400 tokens and the system
+            # prompt ~3,500, so 15,933 tokens (64% of the window) were invisible.
+            # She believed a turn sat at 19% full while it was actually at 84%,
+            # so compaction never fired and the request came back a bare 400.
+            # It got worse every time a tool was added. Count the overhead.
             est = sum(self._entry_chars(m) for m in self.history) // _CHARS_PER_TOKEN
+            est += self._fixed_overhead_tokens()
             if est > self._ctx_used:
                 self._ctx_used = est
             # Near the cap on ONE long task, every step re-trips the threshold
@@ -1005,25 +1049,42 @@ class Agent:
         With final_text it's the reviewer's evidence file (plus the
         session's prior claims, so contradictions are visible); without,
         it's the walk-it-back trace handed to the agent itself."""
+        def _cut(text: str, n: int) -> str:
+            """Truncate LOUDLY. Silent truncation was making the reviewer treat
+            absence of evidence as evidence of absence — it bounced a correct
+            $4,200 quote that sat just past a 200-char cut, and called a complete
+            answer 'cut off mid-sentence' because the ANSWER itself was clipped.
+            A visible marker lets it distinguish 'not there' from 'not shown'."""
+            text = str(text)
+            return text if len(text) <= n else text[:n] + f" …[+{len(text)-n} chars not shown]"
+
         lines = []
         for m in self.history[turn_start:]:
             role = m.get("role")
             if role == "user" and not lines:
-                lines.append(f"REQUEST: {str(m.get('content'))[:300]}")
+                lines.append(f"REQUEST: {_cut(m.get('content'), 400)}")
             elif role == "tool_use":
                 for c in (m.get("calls") or []):
-                    args = str(getattr(c, "args", ""))[:120]
+                    args = _cut(getattr(c, "args", ""), 160)
                     lines.append(f"ACTION: {getattr(c, 'name', '?')} {args}")
             elif role == "tool_result":
-                lines.append(f"RESULT: {str(m.get('content'))[:200]}")
-        lines = lines[:1] + lines[max(1, len(lines) - 14):]   # request + recent
+                # Results ARE the evidence; starving them is what caused false
+                # bounces. Generous overall, and the most recent get the most
+                # room since the answer is usually built on them.
+                lines.append(f"RESULT: {_cut(m.get('content'), 900)}")
+        if len(lines) > 15:
+            dropped = len(lines) - 15
+            lines = lines[:1] + [f"…[{dropped} earlier step(s) not shown]"] \
+                + lines[len(lines) - 14:]
         if final_text is not None:
-            prior = [str(m.get("content"))[:120]
+            prior = [_cut(m.get("content"), 160)
                      for m in self.history[:turn_start]
                      if m.get("role") == "assistant"][-3:]
             for p in prior:
                 lines.append(f"PRIOR CLAIM (earlier this session): {p}")
-            lines.append(f"FINAL ANSWER: {final_text[:500]}")
+            # NEVER clip the thing being judged — a clipped answer reads as an
+            # answer that trails off, and got bounced for exactly that.
+            lines.append(f"FINAL ANSWER: {final_text}")
         return "\n".join(lines)
 
     def _superego_review(self, turn_start: int, final_text: str) -> tuple[str, str]:
@@ -1031,6 +1092,12 @@ class Agent:
         is unreachable or answers gibberish, the work passes — the gate
         must never take the whole agent down with it."""
         digest = self._evidence_digest(turn_start, final_text)
+        try:
+            from . import forensic
+            forensic.record(getattr(self, "session_id", ""), "superego_evidence",
+                            digest=digest)
+        except Exception:
+            pass
         try:
             # Judging is a match-claim-to-evidence task, not a reasoning one —
             # skip the reasoning phase (as with vision) so a review is ~5s, not
@@ -1070,6 +1137,15 @@ class Agent:
         """Append to the judgment ledger. Best effort — bookkeeping must
         never break the work it's keeping books on."""
         try:
+            # The ledger keeps the request and the claim verbatim — so a secret
+            # someone typed into chat would be preserved here forever. Scrub
+            # before it touches disk.
+            try:
+                from .vault import scrub
+                entry = {k: (scrub(v) if isinstance(v, str) else v)
+                         for k, v in entry.items()}
+            except Exception:
+                pass
             LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
             with LEDGER_PATH.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(entry) + "\n")
@@ -1077,6 +1153,23 @@ class Agent:
             pass
 
     # -- memory compaction --------------------------------------------
+
+    def _fixed_overhead_tokens(self) -> int:
+        """Tokens spent before a word of conversation: the system prompt plus
+        every tool definition. Cached — it only moves when the toolset does."""
+        n = getattr(self, "_overhead_cache", None)
+        if n is not None:
+            return n
+        try:
+            import json as _json
+            schema = _json.dumps([
+                {"name": t.name, "description": t.description,
+                 "parameters": t.parameters} for t in self.tools.values()])
+            n = (len(schema) + len(self._system())) // _CHARS_PER_TOKEN
+        except Exception:
+            n = 0
+        self._overhead_cache = n
+        return n
 
     @staticmethod
     def _entry_chars(m: dict) -> int:
@@ -1220,6 +1313,20 @@ class Agent:
                 cut = user_idxs[-1]      # keep at least the current turn
         if cut is None:                   # no user turn to anchor to
             return None
+
+        # force=True means the server ALREADY refused the request as too big.
+        # When one turn is what overflowed (she read two large files in a
+        # single turn), the cut lands at that turn's own start, so summarizing
+        # the prefix shrinks nothing and the retry goes out just as oversized —
+        # which came back as a bare 400 and killed the job. Three times in one
+        # day, always the same shape. So in force mode also squeeze the bodies
+        # of older tool outputs inside what we're keeping; pairing survives,
+        # and this is the only lever that touches the turn that actually blew.
+        if force:
+            squeezed = self._trim_tool_results(keep_recent=4)
+            if squeezed:
+                self._turn_hiccups.append(
+                    f"emergency: trimmed {squeezed} tool output(s)")
 
         old, kept = self.history[:cut], self.history[cut:]
         old_chars = sum(self._entry_chars(m) for m in old)
@@ -1375,6 +1482,7 @@ class Agent:
         # heartbeat notes while it grinds (30s, then every minute), and Stop
         # abandons the wait within ~15s instead of politely finishing it.
         import concurrent.futures as _cf
+        _t_started = time.time()
         _ex = _cf.ThreadPoolExecutor(max_workers=1)
         try:
             _fut = _ex.submit(lambda: tool.run(**call.args))
@@ -1407,6 +1515,26 @@ class Agent:
 
         result = str(result)
         self._tools_ran = True
+        try:
+            from . import forensic
+            forensic.record(getattr(self, "session_id", ""), "tool",
+                            tool=call.name, args=call.args, result=result,
+                            seconds=round(time.time() - _t_started, 2),
+                            attempt=_same_tool)
+        except Exception:
+            pass
+        # A credential form was requested: hand it to the UI as a structured
+        # event. The model authors FIELDS, never markup — the dashboard renders
+        # it with trusted code, so untrusted content she has read (a Cortex
+        # email, a web page) can never inject a phishing form into her window.
+        if call.name == "request_credentials":
+            try:
+                from . import vault as _vault
+                for _form in _vault.take_pending():
+                    yield Event(kind="form", tool="request_credentials",
+                                args=_form, summary=_form.get("what", ""))
+            except Exception:
+                pass
         # "[exit N]" is run_command's prefix; anything else says "Error" when it failed.
         failed = result.startswith("Error") or (
             result.startswith("[exit ") and not result.startswith("[exit 0]"))
